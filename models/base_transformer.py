@@ -247,9 +247,9 @@ class Encoder(nn.Module):
 
         self.embedding = nn.Embedding(input_vocab_size, d_model)
 
-        self.pos_encoding = positional_encoding(maximum_position_encoding, self.d_model)
+        self.register_buffer('pos_encoding', positional_encoding(maximum_position_encoding, self.d_model))
 
-        self.enc_layers = [EncoderLayer(self.d_model, num_heads, dff, rate) for _ in range(num_layers)]
+        self.enc_layers = nn.ModuleList([EncoderLayer(self.d_model, num_heads, dff, rate) for _ in range(num_layers)])
 
         self.dropout = nn.Dropout(rate)
 
@@ -283,9 +283,9 @@ class Decoder(nn.Module):
 
         self.embedding = nn.Embedding(target_vocab_size, d_model)
 
-        self.pos_encoding = positional_encoding(maximum_position_encoding, self.d_model)
+        self.register_buffer('pos_encoding', positional_encoding(maximum_position_encoding, self.d_model))
 
-        self.dec_layers = [DecoderLayer(self.d_model, num_heads, dff, rate) for _ in range(num_layers)]
+        self.dec_layers = nn.ModuleList([DecoderLayer(self.d_model, num_heads, dff, rate) for _ in range(num_layers)])
 
         self.dropout = nn.Dropout(rate)
 
@@ -319,9 +319,9 @@ class EncoderNoEmbed(nn.Module):
         self.d_model = d_model
         self.num_layers = num_layers
 
-        self.pos_encoding = positional_encoding(maximum_position_encoding, self.d_model)
+        self.register_buffer('pos_encoding', positional_encoding(maximum_position_encoding, self.d_model))
 
-        self.enc_layers = [EncoderLayer(self.d_model, num_heads, dff, rate) for _ in range(num_layers)]
+        self.enc_layers = nn.ModuleList([EncoderLayer(self.d_model, num_heads, dff, rate) for _ in range(num_layers)])
 
         self.dropout = nn.Dropout(rate)
 
@@ -352,9 +352,9 @@ class DecoderNoEmbed(nn.Module):
         self.d_model = d_model
         self.num_layers = num_layers
 
-        self.pos_encoding = positional_encoding(maximum_position_encoding, self.d_model)
+        self.register_buffer('pos_encoding', positional_encoding(maximum_position_encoding, self.d_model))
 
-        self.dec_layers = [DecoderLayer(self.d_model, num_heads, dff, rate) for _ in range(num_layers)]
+        self.dec_layers = nn.ModuleList([DecoderLayer(self.d_model, num_heads, dff, rate) for _ in range(num_layers)])
 
         self.dropout = nn.Dropout(rate)
 
