@@ -129,29 +129,26 @@ def train(device, epochs, model_kwargs, opt_args, train_dataloader, val_dataload
 
 if __name__ == "__main__":
 
-	class Cfg:
-		langs = ['en', 'fr']
-		vocab_size = 10000
-		batch_size = 20
-		epochs = 10
+	from utils.arguments import parser
+	args = parser.parse_args()
 
 	transformer_args = {
-		'num_layers' : 6,
-		'num_heads' : 8,
-		'dff' : 2048,
-		'd_model' : 512,
-		'input_vocab_size' : 10000,
-		'target_vocab_size' : 10000,
-		'pe_input' : 1000,
-		'pe_target' : 1000,
-		'rate' : 0.1}
+		'num_layers' : args.layers,
+		'num_heads' : args.heads,
+		'dff' : args.dff,
+		'd_model' : args.d_model,
+		'input_vocab_size' : args.vocab_size,
+		'target_vocab_size' : args.vocab_size,
+		'pe_input' : args.max_pe,
+		'pe_target' : args.max_pe,
+		'rate' : args.dropout}
 
 	opt_args = {
-		'lr' : 1e-4}
+		'lr' : args.lr}
 
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 	train_dataloader, val_dataloader, test_dataloader = preprocess.load_and_preprocess(
-		Cfg.langs, Cfg.batch_size, Cfg.vocab_size, "ted_multi")
+		args.langs, args.batch_size, args.vocab_size, "ted_multi")
 
-	train(device, Cfg.epochs, transformer_args, opt_args, train_dataloader, val_dataloader=val_dataloader)
+	train(device, args.epochs, transformer_args, opt_args, train_dataloader, val_dataloader=val_dataloader)
