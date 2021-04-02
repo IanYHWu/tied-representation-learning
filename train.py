@@ -7,19 +7,7 @@ import torch
 import models.base_transformer as base_transformer
 import utils.preprocess as preprocess
 import utils.metrics as metrics
-
-
-class Cfg:
-    langs = ['en', 'fr']
-    vocab_size = 2000
-    batch_size = 32
-    layers = 2
-    heads = 4
-    dff = 128
-    d_model = 32
-    max_pe = 1000
-    dropout = 0.1
-    epochs = 20
+from utils.arguments import parser
 
 
 def train_step(x, y, model, optimizer, criterion):
@@ -29,7 +17,7 @@ def train_step(x, y, model, optimizer, criterion):
 
     # forward
     model.train()
-    y_pred, _ = model(x, y_inp, enc_mask, look_ahead_mask, dec_mask)
+    y_pred, _ = model(x, y_inp, look_ahead_mask, dec_mask, enc_mask)
     loss = criterion(y_pred.permute(0, 2, 1), y_tar)
 
     # backward
@@ -57,19 +45,21 @@ def val_step(x, y, model, criterion):
     # metrics
     batch_loss = loss.item()
     batch_acc = (torch.argmax(y_pred.detach(), axis=-1) == y_tar).numpy().mean()
-    batch_bleu = metrics.compute_bleu(y_tar, y_pred)
+    batch_bleu = metrics.compute_bleu(y_tar, torch.argmax(y_pred.detach(), axis=-1))
 
     return batch_loss, batch_acc, batch_bleu
 
 
-def train(epochs, train_loader, val_loader=None):
+def train(args, train_loader, val_loader=None):
     """Training Loop"""
-    model = base_transformer.Transformer(Cfg.layers, Cfg.heads, Cfg.dff,
-                                    Cfg.d_model, Cfg.vocab_size,
-                                    Cfg.vocab_size, Cfg.max_pe,
-                                    Cfg.max_pe, rate=Cfg.dropout)
+
+    model = base_transformer.Transformer(args.layers, args.heads, args.dff,
+                                         args.d_model, args.vocab_size,
+                                         args.vocab_size, args.max_pe,
+                                         args.max_pe, rate=args.dropout)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     criterion = torch.nn.CrossEntropyLoss()
+    epochs = args.epochs
 
     for epoch in range(epochs):
 
@@ -93,7 +83,6 @@ def train(epochs, train_loader, val_loader=None):
         if val_loader is not None:
             for i, (x, y) in enumerate(val_loader):
                 batch_loss, batch_acc, batch_bleu = val_step(x, y, model, criterion)
-
                 val_epoch_loss += (batch_loss - val_epoch_loss) / (i + 1)
                 val_epoch_acc += (batch_acc - val_epoch_acc) / (i + 1)
                 val_epoch_bleu += (batch_bleu - val_epoch_bleu) / (i + 1)
@@ -108,7 +97,9 @@ def train(epochs, train_loader, val_loader=None):
 
 
 if __name__ == "__main__":
-    train_dataloader, val_dataloader, test_dataloader = \
-    preprocess.load_and_preprocess(Cfg.langs, Cfg.batch_size, Cfg.vocab_size, "ted_multi")
+    args = parser.parse_args()
 
-    train(epochs=30, train_loader=train_dataloader, val_loader=val_dataloader)
+    train_dataloader, val_dataloader, test_dataloader = \
+        preprocess.load_and_preprocess(args.langs, args.batch_size, args.vocab_size, args.dataset)
+
+    train(args, train_loader=val_dataloader, val_loader=test_dataloader)
