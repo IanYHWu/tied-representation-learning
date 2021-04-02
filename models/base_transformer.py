@@ -379,9 +379,9 @@ class DecoderNoEmbed(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, num_layers, num_heads, dff,
-                 d_model, input_vocab_size, target_vocab_size,
-                 pe_input, pe_target, rate=0.1):
+    def __init__(self, num_layers = 4, num_heads = 4, dff = 256,
+                 d_model = 64, input_vocab_size = 1500, target_vocab_size = 1500,
+                 pe_input = 1500, pe_target = 1500, rate=0.1):
         super(Transformer, self).__init__()
 
         self.encoder = Encoder(num_layers, d_model, num_heads, dff,
