@@ -7,32 +7,33 @@ import torch
 import models.base_transformer as base_transformer
 import utils.preprocess as preprocess
 import utils.metrics as metrics
+import time
 
 def to_devices(tensors, device):
 	return (tensor.to(device) for tensor in tensors)
 
-def loss_fn(y_pred, y_true):
-	_mask = torch.logical_not(y_true == 0).float()
-	_loss = criterion(y_pred, y_true)
-	return (_loss * _mask).sum() / _mask.sum()
-	
-def accuracy_fn(y_pred, y_true):
-	_mask = torch.logical_not(y_true == 0).float()
-	_acc = (torch.argmax(y_pred, axis=-1) == y_true)
-	return (_acc * _mask).sum() / _mask.sum()
-
-def train(device, epochs, train_loader, val_loader=None, model_kwargs, opt_args):
+def train(device, epochs, model_kwargs, opt_args, train_dataloader, val_dataloader=None):
 	"""Training Loop"""
 	model = base_transformer.Transformer(**model_kwargs).to(device)
 	optimizer = torch.optim.Adam(model.parameters(), **opt_args)
 	criterion = torch.nn.CrossEntropyLoss(reduction = 'none')
+
+	def loss_fn(y_pred, y_true):
+		_mask = torch.logical_not(y_true == 0).float()
+		_loss = criterion(y_pred, y_true)
+		return (_loss * _mask).sum() / _mask.sum()
+	
+	def accuracy_fn(y_pred, y_true):
+		_mask = torch.logical_not(y_true == 0).float()
+		_acc = (torch.argmax(y_pred, axis=-1) == y_true)
+		return (_acc * _mask).sum() / _mask.sum()
 
 	# define train and val steps
 	def train_step(x, y):
 	
 		# get masks and targets
 		y_inp, y_tar = y[:,:-1], y[:,1:]
-		enc_mask, look_ahead_mask, dec_mask = transformer.create_masks(x, y_inp)
+		enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
 		
 		# devices
 		x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask = to_devices(
@@ -58,7 +59,7 @@ def train(device, epochs, train_loader, val_loader=None, model_kwargs, opt_args)
 	def val_step(x, y):
 		# get masks and targets
 		y_inp, y_tar = y[:, :-1], y[:, 1:]
-		enc_mask, look_ahead_mask, dec_mask = transformer.create_masks(x, y_inp)
+		enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
 		
 		# devices
 		x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask = to_devices(
@@ -82,13 +83,13 @@ def train(device, epochs, train_loader, val_loader=None, model_kwargs, opt_args)
 	batch_losses, batch_accs = [], []
 	epoch_losses, epoch_accs = [], []
 	val_epoch_losses, val_epoch_accs = [], []
-	for epoch in range(cfg.epochs):
+	for epoch in range(epochs):
 		start_ = time.time()
 
 		# train
 		epoch_loss = 0.0
 		epoch_acc = 0.0
-		for i, (x, y) in enumerate(dataloader):
+		for i, (x, y) in enumerate(train_dataloader):
 
 			batch_loss, batch_acc = train_step(x, y)
 			
@@ -130,26 +131,20 @@ if __name__ == "__main__":
 
 	class Cfg:
 		langs = ['en', 'fr']
-		vocab_size = 2000
-		batch_size = 32
-		layers = 2
-		heads = 4
-		dff = 128
-		d_model = 32
-		max_pe = 1000
-		dropout = 0.1
-		epochs = 20
+		vocab_size = 10000
+		batch_size = 20
+		epochs = 10
 
 	transformer_args = {
-		'num_layers' : 4,
-		'num_heads' : 4,
-		'dff' : 256,
-		'd_model' : 64,
-		'input_vocab_size' : 1500,
-		'target_vocab_size' : 1500,
-		'pe_input' : 1500,
-		'pe_target' : 1500,
-		'rate' :0.1}
+		'num_layers' : 6,
+		'num_heads' : 8,
+		'dff' : 2048,
+		'd_model' : 512,
+		'input_vocab_size' : 10000,
+		'target_vocab_size' : 10000,
+		'pe_input' : 1000,
+		'pe_target' : 1000,
+		'rate' : 0.1}
 
 	opt_args = {
 		'lr' : 1e-4}
@@ -159,4 +154,4 @@ if __name__ == "__main__":
 	train_dataloader, val_dataloader, test_dataloader = preprocess.load_and_preprocess(
 		Cfg.langs, Cfg.batch_size, Cfg.vocab_size, "ted_multi")
 
-	train(device, epochs=Cfg.epochs, train_loader=train_dataloader, val_loader=val_dataloader, **transformer_args)
+	train(device, Cfg.epochs, transformer_args, opt_args, train_dataloader, val_dataloader=val_dataloader)
