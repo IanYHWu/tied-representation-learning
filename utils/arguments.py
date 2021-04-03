@@ -48,12 +48,11 @@ parser.add_argument(
     help='Dropout rate'
 )
 parser.add_argument(
-    '--epochs', default=20, type=int,
+    '--epochs', default=10, type=int,
     help='Epochs to train'
 )
-
-
-
-
-
+parser.add_argument(
+    '--lr', default=1e-4, type=float,
+    help='Learning rate'
+)
 

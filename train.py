@@ -9,97 +9,152 @@ import utils.preprocess as preprocess
 import utils.metrics as metrics
 from utils.arguments import parser
 
+import time
 
-def train_step(x, y, model, optimizer, criterion):
-    # get masks and targets
-    y_inp, y_tar = y[:, :-1], y[:, 1:]
-    enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
+def to_devices(tensors, device):
+	return (tensor.to(device) for tensor in tensors)
 
-    # forward
-    model.train()
-    y_pred, _ = model(x, y_inp, look_ahead_mask, dec_mask, enc_mask)
-    loss = criterion(y_pred.permute(0, 2, 1), y_tar)
+def train(device, epochs, model_kwargs, opt_args, train_dataloader, val_dataloader=None):
+	"""Training Loop"""
+	model = base_transformer.Transformer(**model_kwargs).to(device)
+	optimizer = torch.optim.Adam(model.parameters(), **opt_args)
+	criterion = torch.nn.CrossEntropyLoss(reduction = 'none')
 
-    # backward
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+	def loss_fn(y_pred, y_true):
+		_mask = torch.logical_not(y_true == 0).float()
+		_loss = criterion(y_pred, y_true)
+		return (_loss * _mask).sum() / _mask.sum()
+	
+	def accuracy_fn(y_pred, y_true):
+		_mask = torch.logical_not(y_true == 0).float()
+		_acc = (torch.argmax(y_pred, axis=-1) == y_true)
+		return (_acc * _mask).sum() / _mask.sum()
 
-    # metrics
-    batch_loss = loss.item()
-    batch_acc = (torch.argmax(y_pred.detach(), axis=-1) == y_tar).numpy().mean()
+	# define train and val steps
+	def train_step(x, y):
+	
+		# get masks and targets
+		y_inp, y_tar = y[:,:-1], y[:,1:]
+		enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
+		
+		# devices
+		x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask = to_devices(
+			(x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask),
+			device)
 
-    return batch_loss, batch_acc
+		# forward
+		model.train()
+		y_pred, _ = model(x, y_inp, enc_mask, look_ahead_mask, dec_mask)
+		loss = loss_fn(y_pred.permute(0, 2, 1), y_tar)
+		
+		# backward
+		optimizer.zero_grad()
+		loss.backward()
+		optimizer.step()
 
-
-def val_step(x, y, model, criterion):
-    # get masks and targets
-    y_inp, y_tar = y[:, :-1], y[:, 1:]
-    enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
-
-    # forward
-    model.eval()
-    y_pred, _ = model(x, y_inp, enc_mask, look_ahead_mask, dec_mask)
-    loss = criterion(y_pred.permute(0, 2, 1), y_tar)
-
-    # metrics
-    batch_loss = loss.item()
-    batch_acc = (torch.argmax(y_pred.detach(), axis=-1) == y_tar).numpy().mean()
+		# metrics
+		batch_loss = loss.cpu().item()
+		batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
     batch_bleu = metrics.compute_bleu(y_tar, torch.argmax(y_pred.detach(), axis=-1))
 
-    return batch_loss, batch_acc, batch_bleu
+		return batch_loss, batch_acc, batch_bleu
 
+	def val_step(x, y):
+		# get masks and targets
+		y_inp, y_tar = y[:, :-1], y[:, 1:]
+		enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
+		
+		# devices
+		x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask = to_devices(
+			(x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask),
+			device)
 
-def train(args, train_loader, val_loader=None):
-    """Training Loop"""
+		# forward
+		model.eval()
+		with torch.no_grad():
+			y_pred, _ = model(x, y_inp, enc_mask, look_ahead_mask, dec_mask)
+			loss = loss_fn(y_pred.permute(0, 2, 1), y_tar)
 
-    model = base_transformer.Transformer(args.layers, args.heads, args.dff,
-                                         args.d_model, args.vocab_size,
-                                         args.vocab_size, args.max_pe,
-                                         args.max_pe, rate=args.dropout)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    criterion = torch.nn.CrossEntropyLoss()
-    epochs = args.epochs
+		# metrics
+		batch_loss = loss.item()
+		batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
 
-    for epoch in range(epochs):
+		return batch_loss, batch_acc
 
-        train_epoch_loss = 0.0
-        train_epoch_acc = 0.0
-        val_epoch_loss = 0.0
-        val_epoch_acc = 0.0
-        val_epoch_bleu = 0.0
-        for i, (x, y) in enumerate(train_loader):
+	# main training loop
 
-            batch_loss, batch_acc = train_step(x, y, model, optimizer, criterion)
+	batch_losses, batch_accs = [], []
+	epoch_losses, epoch_accs = [], []
+	val_epoch_losses, val_epoch_accs, val_epoch_bleus = [], [], []
+	for epoch in range(epochs):
+		start_ = time.time()
 
-            train_epoch_loss += (batch_loss - train_epoch_loss) / (i + 1)
-            train_epoch_acc += (batch_acc - train_epoch_acc) / (i + 1)
+		# train
+		epoch_loss = 0.0
+		epoch_acc = 0.0
+		for i, (x, y) in enumerate(train_dataloader):
 
-            if i % 50 == 0:
-                print('Batch {} Training Loss {:.4f} Accuracy {:.4f}'.format(i, train_epoch_loss, train_epoch_acc))
+			batch_loss, batch_acc = train_step(x, y)
+			
+			batch_losses.append(batch_loss)
+			batch_accs.append(batch_acc)
 
-        print('Epoch {} Training Loss {:.4f} Accuracy {:.4f} \n'.format(epoch, train_epoch_loss, train_epoch_acc))
+			epoch_loss += (batch_loss - epoch_loss) / (i + 1)
+			epoch_acc += (batch_acc - epoch_acc) / (i + 1)
+			
+			if i % 50 == 0:
+				print('Batch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
+					i, epoch_loss, epoch_acc, (time.time() - start_)/(i+1)))
+					
+		epoch_losses.append(epoch_loss)
+		epoch_accs.append(epoch_acc)
+		
+		# val
+		if val_dataloader is not None:
+			val_epoch_loss = 0.0
+			val_epoch_acc = 0.0
+      val_epoch_bleu = 0.0
+			for i, (x, y) in enumerate(val_dataloader):
+				batch_loss, batch_acc, batch_bleu = val_step(x, y)
+				val_epoch_loss += (batch_loss - val_epoch_loss) / (i + 1)
+				val_epoch_acc += (batch_acc - val_epoch_acc) / (i + 1)
+        val_epoch_bleu += (batch_bleu - val_epoch_bleu) / (i + 1)
+					
+			val_epoch_losses.append(val_epoch_loss)
+			val_epoch_accs.append(val_epoch_acc)
+      val_epoch_bleus.append(val_epoch_bleu)
+			
+			print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f} in {:.4f} secs \n'.format(
+				epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_epoch_bleu, time.time() - start_))
+		else:
+			print('Epoch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
+				epoch, epoch_loss, epoch_acc, time.time() - start_))
 
-        if val_loader is not None:
-            for i, (x, y) in enumerate(val_loader):
-                batch_loss, batch_acc, batch_bleu = val_step(x, y, model, criterion)
-                val_epoch_loss += (batch_loss - val_epoch_loss) / (i + 1)
-                val_epoch_acc += (batch_acc - val_epoch_acc) / (i + 1)
-                val_epoch_bleu += (batch_bleu - val_epoch_bleu) / (i + 1)
-
-                if i % 50 == 0:
-                    print('Batch {} Val Loss {:.4f} Accuracy {:.4f} Bleu {:.4f}'.
-                          format(i, val_epoch_loss, val_epoch_acc, val_epoch_bleu))
-
-            print(
-                'Epoch {} Val Loss {:.4f} Accuracy {:.4f} Bleu {:.4f}\n'.
-                    format(epoch, val_epoch_loss, val_epoch_acc, val_epoch_bleu))
+	return epoch_losses, epoch_accs, val_epoch_losses, val_epoch_accs
 
 
 if __name__ == "__main__":
-    args = parser.parse_args()
 
-    train_dataloader, val_dataloader, test_dataloader = \
-        preprocess.load_and_preprocess(args.langs, args.batch_size, args.vocab_size, args.dataset)
+	args = parser.parse_args()
 
-    train(args, train_loader=val_dataloader, val_loader=test_dataloader)
+	transformer_args = {
+		'num_layers' : args.layers,
+		'num_heads' : args.heads,
+		'dff' : args.dff,
+		'd_model' : args.d_model,
+		'input_vocab_size' : args.vocab_size,
+		'target_vocab_size' : args.vocab_size,
+		'pe_input' : args.max_pe,
+		'pe_target' : args.max_pe,
+		'rate' : args.dropout}
+
+	opt_args = {
+		'lr' : args.lr}
+
+	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+	train_dataloader, val_dataloader, test_dataloader = preprocess.load_and_preprocess(
+		args.langs, args.batch_size, args.vocab_size, "ted_multi")
+
+	train(device, args.epochs, transformer_args, opt_args, train_dataloader, val_dataloader=val_dataloader)
+  
