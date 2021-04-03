@@ -7,6 +7,8 @@ import torch
 import models.base_transformer as base_transformer
 import utils.preprocess as preprocess
 import utils.metrics as metrics
+from utils.arguments import parser
+
 import time
 
 def to_devices(tensors, device):
@@ -53,8 +55,9 @@ def train(device, epochs, model_kwargs, opt_args, train_dataloader, val_dataload
 		# metrics
 		batch_loss = loss.cpu().item()
 		batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
+    batch_bleu = metrics.compute_bleu(y_tar, torch.argmax(y_pred.detach(), axis=-1))
 
-		return batch_loss, batch_acc
+		return batch_loss, batch_acc, batch_bleu
 
 	def val_step(x, y):
 		# get masks and targets
@@ -82,7 +85,7 @@ def train(device, epochs, model_kwargs, opt_args, train_dataloader, val_dataload
 
 	batch_losses, batch_accs = [], []
 	epoch_losses, epoch_accs = [], []
-	val_epoch_losses, val_epoch_accs = [], []
+	val_epoch_losses, val_epoch_accs, val_epoch_bleus = [], [], []
 	for epoch in range(epochs):
 		start_ = time.time()
 
@@ -110,16 +113,19 @@ def train(device, epochs, model_kwargs, opt_args, train_dataloader, val_dataload
 		if val_dataloader is not None:
 			val_epoch_loss = 0.0
 			val_epoch_acc = 0.0
+      val_epoch_bleu = 0.0
 			for i, (x, y) in enumerate(val_dataloader):
-				batch_loss, batch_acc = val_step(x, y)
+				batch_loss, batch_acc, batch_bleu = val_step(x, y)
 				val_epoch_loss += (batch_loss - val_epoch_loss) / (i + 1)
 				val_epoch_acc += (batch_acc - val_epoch_acc) / (i + 1)
+        val_epoch_bleu += (batch_bleu - val_epoch_bleu) / (i + 1)
 					
 			val_epoch_losses.append(val_epoch_loss)
 			val_epoch_accs.append(val_epoch_acc)
+      val_epoch_bleus.append(val_epoch_bleu)
 			
-			print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} in {:.4f} secs \n'.format(
-				epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, time.time() - start_))
+			print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f} in {:.4f} secs \n'.format(
+				epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_epoch_bleu, time.time() - start_))
 		else:
 			print('Epoch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
 				epoch, epoch_loss, epoch_acc, time.time() - start_))
@@ -129,7 +135,6 @@ def train(device, epochs, model_kwargs, opt_args, train_dataloader, val_dataload
 
 if __name__ == "__main__":
 
-	from utils.arguments import parser
 	args = parser.parse_args()
 
 	transformer_args = {
@@ -152,3 +157,4 @@ if __name__ == "__main__":
 		args.langs, args.batch_size, args.vocab_size, "ted_multi")
 
 	train(device, args.epochs, transformer_args, opt_args, train_dataloader, val_dataloader=val_dataloader)
+  

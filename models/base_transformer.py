@@ -39,7 +39,7 @@ def create_look_ahead_mask(size):
 
 
 def create_masks(inp, tar):
-    ''' create all masks needed for the transformer '''
+    """create all masks needed for the transformer"""
 
     # encoder mask
     enc_padding_mask = create_mask(inp)
