@@ -3,10 +3,21 @@ Arguments for Argparse
 """
 
 import argparse
-import torch
 
 parser = argparse.ArgumentParser(description='MNMT Input Params')
 
+parser.add_argument(
+    '--name', required=True,
+    type=str, help="Name of run"
+)
+parser.add_argument(
+    '--location', default='..',
+    type=str, help="Save folder location"
+)
+parser.add_argument(
+    '--checkpoint', default=False,
+    type=bool, help="Load from checkpoint"
+)
 parser.add_argument(
     '--dataset', default="ted_multi",
     type=str, help='Dataset Name'

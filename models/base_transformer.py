@@ -56,14 +56,14 @@ def create_masks(inp, tar):
 
 
 def create_loss_mask(inp):
-    ''' mask for the loss function '''
+    """mask for the loss function"""
 
     mask = torch.all(inp == 0, dim=-1).float()
     return mask[:, 1:]  # (batch_size, seq_len - 1)
 
 
 def scaled_dot_product_attention(q, k, v, mask):
-    '''
+    """
     q: query = (..., seq_len_q, depth)
     k: key = (..., seq_len_k, depth)
     v: value = (..., seq_len_v, depth_v)
@@ -74,7 +74,7 @@ def scaled_dot_product_attention(q, k, v, mask):
 
     Returns:
         output, attention_weights
-    '''
+    """
 
     # Q @ K^T
     matmul_qk = torch.matmul(q, torch.transpose(k, -1, -2))  # (..., seq_len_q, seq_len_k)
@@ -95,6 +95,21 @@ def scaled_dot_product_attention(q, k, v, mask):
     output = torch.matmul(attention_weights, v)  # (..., seq_len_q, depth_v_)
 
     return output, attention_weights
+
+
+def base_transformer_args(args):
+    transformer_args = {
+        'num_layers': args.layers,
+        'num_heads': args.heads,
+        'dff': args.dff,
+        'd_model': args.d_model,
+        'input_vocab_size': args.vocab_size,
+        'target_vocab_size': args.vocab_size,
+        'pe_input': args.max_pe,
+        'pe_target': args.max_pe,
+        'rate': args.dropout}
+
+    return transformer_args
 
 
 class MultiHeadAttention(nn.Module):
