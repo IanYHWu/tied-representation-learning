@@ -8,6 +8,8 @@ import utils.preprocess as preprocess
 from utils.arguments import parser
 import time
 import utils.logging as logging
+from hyperparams.loader import Loader
+import models.initialiser as initialiser
 
 
 def to_devices(tensors, device):
@@ -76,35 +78,34 @@ def val_step(x, y, model, criterion):
 	return batch_loss, batch_acc
 
 
-def train(device, args, train_dataloader, val_dataloader=None):
+def train(device, params, train_dataloader, val_dataloader=None):
 	"""Training Loop"""
 
-	model_kwargs = base_transformer.base_transformer_args(args)
-	model = base_transformer.Transformer(**model_kwargs).to(device)
-	optimizer = torch.optim.Adam(model.parameters(), args.lr)
+	new_root_path = params.location
+	new_name = params.name
+	if params.checkpoint:
+		params = logging.load_params(new_root_path + '/' + new_name)
+		params.location = new_root_path
+		params.name = new_name
+		logger = logging.Logger(params)
+		logger.make_dirs()
+	else:
+		logger = logging.Logger(params)
+		logger.make_dirs()
+	logger.save_params()
+
+	model = initialiser.initialise_model(params, device)
+	optimizer = torch.optim.Adam(model.parameters(), params.lr)
 	criterion = torch.nn.CrossEntropyLoss(reduction='none')
 	epoch = 0
-
-	new_root_path = args.location
-	new_name = args.name
-	if args.checkpoint:
-		args = logging.load_args(new_root_path + '/' + new_name)
-		args.location = new_root_path
-		args.name = new_name
-		logger = logging.Logger(args)
-		logger.make_dirs()
+	if params.checkpoint:
 		model, optimizer, epoch = logging.load_checkpoint(logger.checkpoint_path, model, optimizer)
-	else:
-		logger = logging.Logger(args)
-		logger.make_dirs()
-
-	logger.save_args()
 
 	batch_losses, batch_accs = [], []
 	epoch_losses, epoch_accs = [], []
 	val_epoch_losses, val_epoch_accs = [], []
 
-	while epoch < args.epochs:
+	while epoch < params.epochs:
 		start_ = time.time()
 
 		# train
@@ -157,9 +158,12 @@ if __name__ == "__main__":
 
 	args = parser.parse_args()
 
+	# Loader can also take in any dictionary of parameters
+	params = Loader(args, check_custom=True)
+
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 	train_dataloader, val_dataloader, test_dataloader = preprocess.load_and_preprocess(
-		args.langs, args.batch_size, args.vocab_size, args.dataset)
+		params.langs, params.batch_size, params.vocab_size, params.dataset)
 
-	train(device, args, train_dataloader, val_dataloader=val_dataloader)
+	train(device, params, test_dataloader, val_dataloader=val_dataloader)

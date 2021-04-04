@@ -97,19 +97,19 @@ def scaled_dot_product_attention(q, k, v, mask):
     return output, attention_weights
 
 
-def base_transformer_args(args):
-    transformer_args = {
-        'num_layers': args.layers,
-        'num_heads': args.heads,
-        'dff': args.dff,
-        'd_model': args.d_model,
-        'input_vocab_size': args.vocab_size,
-        'target_vocab_size': args.vocab_size,
-        'pe_input': args.max_pe,
-        'pe_target': args.max_pe,
-        'rate': args.dropout}
+def base_transformer_args(params):
+    transformer_params = {
+        'num_layers': params.layers,
+        'num_heads': params.heads,
+        'dff': params.dff,
+        'd_model': params.d_model,
+        'input_vocab_size': params.vocab_size,
+        'target_vocab_size': params.vocab_size,
+        'pe_input': params.max_pe,
+        'pe_target': params.max_pe,
+        'rate': params.dropout}
 
-    return transformer_args
+    return transformer_params
 
 
 class MultiHeadAttention(nn.Module):

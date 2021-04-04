@@ -19,8 +19,16 @@ parser.add_argument(
     type=bool, help="Load from checkpoint"
 )
 parser.add_argument(
+    '--custom_model', default=None,
+    type=str, help="Load a custom model"
+)
+parser.add_argument(
     '--dataset', default="ted_multi",
     type=str, help='Dataset Name'
+)
+parser.add_argument(
+    '--model', default='base',
+    type=str, help='Model to use'
 )
 parser.add_argument(
     '--langs', nargs='+', default=['en', 'fr'],

@@ -5,3 +5,4 @@ tokenizers~=0.10.1
 numpy~=1.18.5
 pandas~=1.1.0
 matplotlib~=3.3.0
+PyYAML~=5.3.1

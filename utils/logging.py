@@ -7,14 +7,15 @@ import pandas as pd
 import torch
 import numpy as np
 import json
-from utils.arguments import parser
+from hyperparams.loader import Loader
+
 
 
 class Logger:
-    def __init__(self, args):
-        self.args = args
-        self.root = self.args.location
-        self.name = self.args.name
+    def __init__(self, params):
+        self.params = params
+        self.root = self.params.location
+        self.name = self.params.name
         self.root_path = None
         self.checkpoint_path = None
         self.log_path = None
@@ -55,22 +56,22 @@ class Logger:
             'optimizer_state_dict': optimizer.state_dict(),
         }, self.checkpoint_path)
 
-    def save_args(self):
-        with open(self.root_path + '/input_args.txt', 'w') as f:
-            json.dump(self.args.__dict__, f, indent=2)
+    def save_params(self):
+        with open(self.root_path + '/input_params.txt', 'w') as f:
+            json.dump(self.params.__dict__, f, indent=2)
 
 
-def load_args(root_path):
-    args = parser.parse_args()
-    with open(root_path + '/input_args.txt', 'r') as f:
-        args.__dict__ = json.load(f)
+def load_params(root_path):
+    with open(root_path + '/input_params.txt', 'r') as f:
+        param_dict = json.load(f)
+    params = Loader(param_dict, check_custom=False)
 
-    return args
+    return params
 
 
 def load_checkpoint(path, model, optimizer):
     checkpoint = torch.load(path)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     epoch = checkpoint['epoch']
 
