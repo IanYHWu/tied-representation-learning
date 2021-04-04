@@ -166,4 +166,4 @@ if __name__ == "__main__":
 	train_dataloader, val_dataloader, test_dataloader = preprocess.load_and_preprocess(
 		params.langs, params.batch_size, params.vocab_size, params.dataset)
 
-	train(device, params, test_dataloader, val_dataloader=val_dataloader)
+	train(device, params, train_dataloader, val_dataloader=val_dataloader)
