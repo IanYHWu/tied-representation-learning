@@ -10,7 +10,6 @@ import json
 from hyperparams.loader import Loader
 
 
-
 class Logger:
     def __init__(self, params):
         self.params = params

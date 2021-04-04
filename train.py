@@ -7,7 +7,7 @@ import models.base_transformer as base_transformer
 import utils.preprocess as preprocess
 from utils.arguments import parser
 import time
-import utils.logging as logging
+import utils.train_logger as logging
 from hyperparams.loader import Loader
 import models.initialiser as initialiser
 

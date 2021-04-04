@@ -1,7 +1,7 @@
-'''
+"""
 Pipeline for loading the TED-Multilingual dataset via HuggingFace,
 training a BPE tokenizer and creating a torch dataloader.
-'''
+"""
 
 import torch
 import datasets
@@ -80,6 +80,8 @@ def preprocess(dataset, langs, batch_size=32, tokenizers=None, vocab_size=None):
         """apply tokenization"""
         l_tok = [tokenizer.encode(example[l]) for tokenizer, l in zip(tokenizers, langs)]
         return {'input_ids_' + l: tok.ids for l, tok in zip(langs, l_tok)}
+
+        # padding and convert to torch
 
     dataset = dataset.map(tokenize_fn)
 
