@@ -3,21 +3,26 @@ Test train.py with some simple parameters.
 '''
 
 import torch
+from hyperparams.loader import Loader
 from train import train
 
-transformer_args = {
-	'num_layers' : 2,
-	'num_heads' : 4,
+params = {
+	'model' : 'base',
+	'layers' : 2,
+	'heads' : 4,
 	'dff' : 64,
 	'd_model' : 16,
-	'input_vocab_size' : 20,
-	'target_vocab_size' : 20,
-	'pe_input' : 20,
-	'pe_target' : 10,
-	'rate' : 0.5}
+	'vocab_size' : 20,
+	'max_pe' : 20,
+	'dropout' : 0.5,
+	'lr' : 1e-3,
+	'epochs' : 10,
+	'location' : '.',
+	'checkpoint' : False,
+	'name' : 'test',
+	'custom_model' : False}
 
-opt_args = {
-	'lr' : 1e-3}
+params = Loader(params)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -26,4 +31,4 @@ train_dataloader = [
 	(torch.randint(0, 20, (32, 10)),
 		torch.randint(0, 20, (32, 10))) for _ in range(10)]
 
-train(device, 5, transformer_args, opt_args, train_dataloader, val_dataloader=None)
+train(device, params, train_dataloader, val_dataloader=None)

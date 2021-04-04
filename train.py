@@ -28,7 +28,7 @@ def accuracy_fn(y_pred, y_true):
 	return (_acc * _mask).sum() / _mask.sum()
 
 
-def train_step(x, y, model, criterion, optimizer):
+def train_step(x, y, model, criterion, optimizer, device):
 	# get masks and targets
 	y_inp, y_tar = y[:, :-1], y[:, 1:]
 	enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
@@ -55,7 +55,7 @@ def train_step(x, y, model, criterion, optimizer):
 	return batch_loss, batch_acc
 
 
-def val_step(x, y, model, criterion):
+def val_step(x, y, model, criterion, device):
 	# get masks and targets
 	y_inp, y_tar = y[:, :-1], y[:, 1:]
 	enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
@@ -115,7 +115,7 @@ def train(device, params, train_dataloader, val_dataloader=None):
 		val_epoch_acc = 0.0
 		for i, (x, y) in enumerate(train_dataloader):
 
-			batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer)
+			batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, device)
 			
 			batch_losses.append(batch_loss)
 			batch_accs.append(batch_acc)
@@ -133,7 +133,7 @@ def train(device, params, train_dataloader, val_dataloader=None):
 		# val
 		if val_dataloader is not None:
 			for i, (x, y) in enumerate(val_dataloader):
-				batch_loss, batch_acc = val_step(x, y, model, criterion)
+				batch_loss, batch_acc = val_step(x, y, model, criterion, device)
 				val_epoch_loss += (batch_loss - val_epoch_loss) / (i + 1)
 				val_epoch_acc += (batch_acc - val_epoch_acc) / (i + 1)
 
