@@ -71,9 +71,7 @@ def preprocess(dataset, langs, batch_size=32, tokenizers=None, vocab_size=None):
     dataset = filter_languages(dataset, langs)
 
     # tokenization
-    ret_tokenizers = False
     if tokenizers is None:
-        ret_tokenizers = True
         tokenizers = [train_tokenizer(lang, dataset, vocab_size) for lang in langs]
 
     def tokenize_fn(example):
@@ -99,10 +97,7 @@ def preprocess(dataset, langs, batch_size=32, tokenizers=None, vocab_size=None):
                                              batch_size=batch_size,
                                              collate_fn=pad_seqs)
 
-    if ret_tokenizers:
-        return dataloader, tokenizers
-    else:
-        return dataloader
+    return dataloader, tokenizers
 
 
 def load_and_preprocess(langs, batch_size, vocab_size, dataset_name):
@@ -121,8 +116,27 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name):
     val_dataloader = preprocess(val_dataset, langs, batch_size=batch_size, tokenizers=tokenizers)
     test_dataloader = preprocess(test_dataset, langs, batch_size=batch_size, tokenizers=tokenizers)
 
-    return train_dataloader, val_dataloader, test_dataloader
+    return train_dataloader, val_dataloader, test_dataloader, tokenizers
 
+def detokenize(x, tokenizer, as_lists = True):
+    """
+    Detokenize a given batch of sequences of tokens.
+    x : int torch.tensors - shape (batch, seq_len)
+    tokenizer : tokenizers.Tokenizer
+    as_list : bool - return as list or string
+    """
+    if x.ndim == 1:
+        x = x.unsqueeze(0)
+
+    x = x.detach().cpu().tolist()
+    x = tokenizer.decode_batch(x)
+
+    if as_lists:
+        return [s.split() for s in x]
+    else:
+        return x
 
 if __name__ == "__main__":
-    train, val, test = load_and_preprocess(['en', 'fr'], 32, 2000, "ted_multi")
+
+    # !!!! very large download !!!
+    train, val, test, tokenizers = load_and_preprocess(['en', 'fr'], 32, 2000, "ted_multi")

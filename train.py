@@ -163,7 +163,7 @@ if __name__ == "__main__":
 
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-	train_dataloader, val_dataloader, test_dataloader = preprocess.load_and_preprocess(
+	train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
 		params.langs, params.batch_size, params.vocab_size, params.dataset)
 
 	train(device, params, train_dataloader, val_dataloader=val_dataloader)
