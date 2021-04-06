@@ -3,14 +3,15 @@ Training Loop for MNMT
 """
 
 import torch
-import models.base_transformer as base_transformer
-import utils.preprocess as preprocess
-from utils.arguments import parser
 import time
-import utils.train_logger as logging
-from hyperparams.loader import Loader
-import models.initialiser as initialiser
 
+import models.base_transformer as base_transformer
+import models.initialiser as initialiser
+from utils import preprocess
+from utils.arguments import parser
+from utils import train_logger as logging
+from hyperparams.loader import Loader
+from hyperparams.schedule import WarmupDecay
 
 def to_devices(tensors, device):
 	return (tensor.to(device) for tensor in tensors)
@@ -28,7 +29,7 @@ def accuracy_fn(y_pred, y_true):
 	return (_acc * _mask).sum() / _mask.sum()
 
 
-def train_step(x, y, model, criterion, optimizer, device):
+def train_step(x, y, model, criterion, optimizer, scheduler, device):
 	# get masks and targets
 	y_inp, y_tar = y[:, :-1], y[:, 1:]
 	enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
@@ -47,6 +48,7 @@ def train_step(x, y, model, criterion, optimizer, device):
 	optimizer.zero_grad()
 	loss.backward()
 	optimizer.step()
+	scheduler.step()
 
 	# metrics
 	batch_loss = loss.cpu().item()
@@ -95,7 +97,8 @@ def train(device, params, train_dataloader, val_dataloader=None):
 	logger.save_params()
 
 	model = initialiser.initialise_model(params, device)
-	optimizer = torch.optim.Adam(model.parameters(), params.lr)
+	optimizer = torch.optim.Adam(model.parameters())
+	scheduler = WarmupDecay(optimizer, params.warmup_steps, params.d_model, lr_scale = params.lr_scale)
 	criterion = torch.nn.CrossEntropyLoss(reduction='none')
 	epoch = 0
 	if params.checkpoint:
@@ -115,7 +118,7 @@ def train(device, params, train_dataloader, val_dataloader=None):
 		val_epoch_acc = 0.0
 		for i, (x, y) in enumerate(train_dataloader):
 
-			batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, device)
+			batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, scheduler, device)
 			
 			batch_losses.append(batch_loss)
 			batch_accs.append(batch_acc)

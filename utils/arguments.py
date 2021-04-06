@@ -71,7 +71,11 @@ parser.add_argument(
     help='Epochs to train'
 )
 parser.add_argument(
-    '--lr', default=1e-4, type=float,
-    help='Learning rate'
+    '--warmup_steps', default=1000, type=float,
+    help='Warmup step for lr'
+)
+parser.add_argument(
+    '--lr_scale', default = 1.0, type=float,
+    help='Scale for learning rate schedule'
 )
 

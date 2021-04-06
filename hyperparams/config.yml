@@ -10,7 +10,8 @@ basic:
   max_pe: 1000
   dropout: 0.1
   epochs: 10
-  lr: 0.0001
+  warmup_steps: 4000
+  lr_scale: 1.0
 
 big_basic:
   model: base
@@ -23,4 +24,19 @@ big_basic:
   max_pe: 1000
   dropout: 0.1
   epochs: 20
-  lr: 0.0001
+  warmup_steps: 4000
+  lr_scale: 1.0
+
+aiayn:
+  model: base
+  vocab_size: 10000
+  batch_size: 20
+  layers: 6
+  heads: 8
+  dff: 2048
+  d_model: 512
+  max_pe: 1500
+  dropout: 0.1
+  epochs: 15
+  warmup_steps: 4000
+  lr_scale: 0.1
