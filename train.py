@@ -155,7 +155,14 @@ def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None)
 		
 		# val
 		if val_dataloader is not None:
-			for i, (x, y) in enumerate(val_dataloader):
+			for i, data in enumerate(val_dataloader):
+				if multi:
+					# sample a tranlsation direction and add target tokens
+					(x, y), (x_lang, y_lang) = sample_direction(data, params.langs)
+					x = add_targets(x, y_lang)
+				else:
+					x, y = data
+
 				batch_loss, batch_acc = val_step(x, y, model, criterion, device)
 				val_epoch_loss += (batch_loss - val_epoch_loss) / (i + 1)
 				val_epoch_acc += (batch_acc - val_epoch_acc) / (i + 1)
