@@ -94,7 +94,7 @@ def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None)
 	if len(params.langs) > 2:
 		assert tokenizer is not None
 		multi = True
-		add_targets = AddTargetTokens(params.langs, tokenizer)
+		add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
 
 	new_root_path = params.location
 	new_name = params.name
