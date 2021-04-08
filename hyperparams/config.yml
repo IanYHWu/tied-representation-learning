@@ -40,3 +40,17 @@ aiayn:
   epochs: 15
   warmup_steps: 4000
   lr_scale: 0.1
+
+hs_model:
+  model: base
+  vocab_size: 20000
+  batch_size: 64
+  layers: 4
+  heads: 4
+  dff: 1024
+  d_model: 256
+  max_pe: 1500
+  dropout: 0.1
+  epochs: 15
+  warmup_steps: 4000
+  lr_scale: 1.0

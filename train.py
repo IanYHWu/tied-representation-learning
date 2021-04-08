@@ -3,6 +3,7 @@ Training Loop for MNMT
 """
 
 import torch
+import numpy as np
 import time
 
 import models.base_transformer as base_transformer
@@ -14,20 +15,26 @@ from hyperparams.loader import Loader
 from hyperparams.schedule import WarmupDecay
 
 def to_devices(tensors, device):
+	""" helper function to send tensors to device """
 	return (tensor.to(device) for tensor in tensors)
 
-
 def loss_fn(y_pred, y_true, criterion):
+	""" masked loss function """
 	_mask = torch.logical_not(y_true == 0).float()
 	_loss = criterion(y_pred, y_true)
 	return (_loss * _mask).sum() / _mask.sum()
 
-
 def accuracy_fn(y_pred, y_true):
+	""" masked accuracy function """
 	_mask = torch.logical_not(y_true == 0).float()
 	_acc = (torch.argmax(y_pred, axis=-1) == y_true)
 	return (_acc * _mask).sum() / _mask.sum()
 
+def sample_direction(data, langs):
+	""" randomly sample a source and target language from
+	n_langs possible combinations. """
+	source, target = np.random.choice(len(langs), size = (2,), replace = False)
+	return (data[source], data[target]), (langs[source], langs[target])
 
 def train_step(x, y, model, criterion, optimizer, scheduler, device):
 	# get masks and targets
@@ -80,8 +87,14 @@ def val_step(x, y, model, criterion, device):
 	return batch_loss, batch_acc
 
 
-def train(device, params, train_dataloader, val_dataloader=None):
+def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None):
 	"""Training Loop"""
+
+	multi = False
+	if len(params.langs) > 2:
+		assert tokenizer is not None
+		multi = True
+		add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
 
 	new_root_path = params.location
 	new_name = params.name
@@ -116,7 +129,14 @@ def train(device, params, train_dataloader, val_dataloader=None):
 		epoch_acc = 0.0
 		val_epoch_loss = 0.0
 		val_epoch_acc = 0.0
-		for i, (x, y) in enumerate(train_dataloader):
+		for i, data in enumerate(train_dataloader):
+
+			if multi:
+				# sample a tranlsation direction and add target tokens
+				(x, y), (x_lang, y_lang) = sample_direction(data, params.langs)
+				x = add_targets(x, y_lang)
+			else:
+				x, y = data
 
 			batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, scheduler, device)
 			
@@ -135,7 +155,14 @@ def train(device, params, train_dataloader, val_dataloader=None):
 		
 		# val
 		if val_dataloader is not None:
-			for i, (x, y) in enumerate(val_dataloader):
+			for i, data in enumerate(val_dataloader):
+				if multi:
+					# sample a tranlsation direction and add target tokens
+					(x, y), (x_lang, y_lang) = sample_direction(data, params.langs)
+					x = add_targets(x, y_lang)
+				else:
+					x, y = data
+
 				batch_loss, batch_acc = val_step(x, y, model, criterion, device)
 				val_epoch_loss += (batch_loss - val_epoch_loss) / (i + 1)
 				val_epoch_acc += (batch_acc - val_epoch_acc) / (i + 1)
@@ -156,6 +183,25 @@ def train(device, params, train_dataloader, val_dataloader=None):
 
 	return epoch_losses, epoch_accs, val_epoch_losses, val_epoch_accs
 
+def main(params):
+	""" Loads the dataset and trains the model."""
+
+	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+	if len(params.langs) == 2:
+		# bilingual translation
+
+		train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
+			params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False)
+
+		train(device, params, train_dataloader, val_dataloader=val_dataloader)
+	else:
+		# multilingual translation
+
+		train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
+			params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True)
+
+		train(device, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer)
 
 if __name__ == "__main__":
 
@@ -163,10 +209,4 @@ if __name__ == "__main__":
 
 	# Loader can also take in any dictionary of parameters
 	params = Loader(args, check_custom=True)
-
-	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-	train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
-		params.langs, params.batch_size, params.vocab_size, params.dataset)
-
-	train(device, params, train_dataloader, val_dataloader=val_dataloader)
+	main(params)
