@@ -46,8 +46,7 @@ class TrainLogger:
             df.to_csv(self.log_path)
         else:
             df = pd.DataFrame(np.array([results]),
-                              columns=["Train Epoch Loss", "Train Epoch Acc", "Val Epoch Loss", "Val Epoch Acc",
-                                       "Val Epoch Bleu"])
+                              columns=["Train Epoch Loss", "Train Epoch Acc", "Val Epoch Loss", "Val Epoch Acc"])
             df.to_csv(self.log_path)
 
     def save_model(self, epoch, model, optimizer):

@@ -71,7 +71,7 @@ def train_step(x, y, model, criterion, optimizer, scheduler, device):
     return batch_loss, batch_acc
 
 
-def val_step(x, y, model, criterion, device, bleu_sample_rate=0.1):
+def val_step(x, y, model, criterion, device):
     # get masks and targets
     y_inp, y_tar = y[:, :-1], y[:, 1:]
     enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
@@ -91,13 +91,7 @@ def val_step(x, y, model, criterion, device, bleu_sample_rate=0.1):
     batch_loss = loss.item()
     batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
 
-    p = random.random()
-    if p < bleu_sample_rate:
-        batch_bleu = compute_bleu(y_tar, y_pred)
-    else:
-        batch_bleu = None
-
-    return batch_loss, batch_acc, batch_bleu
+    return batch_loss, batch_acc
 
 
 def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None):
@@ -142,7 +136,6 @@ def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None)
         epoch_acc = 0.0
         val_epoch_loss = 0.0
         val_epoch_acc = 0.0
-        val_epoch_bleu = 0.0
         for i, data in enumerate(train_dataloader):
 
             if multi:
@@ -169,7 +162,6 @@ def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None)
 
         # val
         if val_dataloader is not None:
-            bleu_count = 0
             for i, data in enumerate(val_dataloader):
                 if multi:
                     # sample a tranlsation direction and add target tokens
@@ -178,21 +170,16 @@ def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None)
                 else:
                     x, y = data
 
-                batch_loss, batch_acc, batch_bleu = val_step(x, y, model, criterion, device)
+                batch_loss, batch_acc = val_step(x, y, model, criterion, device)
                 val_epoch_loss += (batch_loss - val_epoch_loss) / (i + 1)
                 val_epoch_acc += (batch_acc - val_epoch_acc) / (i + 1)
 
-                if batch_bleu is not None:
-                    val_epoch_bleu += (batch_bleu - val_epoch_bleu) / (bleu_count + 1)
-                    bleu_count += 1
-
             val_epoch_losses.append(val_epoch_loss)
             val_epoch_accs.append(val_epoch_acc)
-            val_epoch_bleus.append(val_epoch_bleu)
 
-            print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
+            print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f}'
                   ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc,
-                                              val_epoch_bleu, time.time() - start_))
+                                              time.time() - start_))
         else:
             print('Epoch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
                 epoch, epoch_loss, epoch_acc, time.time() - start_))
@@ -200,7 +187,7 @@ def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None)
         epoch += 1
 
         logger.save_model(epoch, model, optimizer)
-        logger.log_results([epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_epoch_bleu])
+        logger.log_results([epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc])
 
     return epoch_losses, epoch_accs, val_epoch_losses, val_epoch_accs
 
@@ -216,7 +203,7 @@ def main(params):
         train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False)
 
-        train(device, params, train_dataloader, val_dataloader=val_dataloader)
+        train(device, params, test_dataloader, val_dataloader=val_dataloader)
     else:
         # multilingual translation
 
