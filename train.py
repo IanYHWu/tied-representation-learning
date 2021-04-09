@@ -203,7 +203,7 @@ def main(params):
         train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False)
 
-        train(device, params, test_dataloader, val_dataloader=val_dataloader)
+        train(device, params, train_dataloader, val_dataloader=val_dataloader)
     else:
         # multilingual translation
 
