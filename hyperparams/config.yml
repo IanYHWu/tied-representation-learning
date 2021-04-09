@@ -13,20 +13,6 @@ basic:
   warmup_steps: 4000
   lr_scale: 1.0
 
-big_basic:
-  model: base
-  vocab_size: 2000
-  batch_size: 32
-  layers: 6
-  heads: 8
-  dff: 128
-  d_model: 32
-  max_pe: 1000
-  dropout: 0.1
-  epochs: 20
-  warmup_steps: 4000
-  lr_scale: 1.0
-
 aiayn:
   model: base
   vocab_size: 10000
@@ -45,6 +31,20 @@ hs_model:
   model: base
   vocab_size: 20000
   batch_size: 64
+  layers: 4
+  heads: 4
+  dff: 1024
+  d_model: 256
+  max_pe: 1500
+  dropout: 0.1
+  epochs: 15
+  warmup_steps: 4000
+  lr_scale: 1.0
+
+hs_model_small:
+  model: base
+  vocab_size: 20000
+  batch_size: 32
   layers: 4
   heads: 4
   dff: 1024
