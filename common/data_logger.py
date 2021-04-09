@@ -85,6 +85,9 @@ class TestLogger:
                           columns=["Langs", "Test Loss", "Test Acc", "Test Bleu"])
         df.to_csv(self.test_log_path)
 
+    def log_examples(self, results):
+
+
 
 def load_params(root_path):
     with open(root_path + '/input_params.txt', 'r') as f:
