@@ -86,7 +86,7 @@ class TestLogger:
         df.to_csv(self.test_log_path)
 
     def log_examples(self, results):
-
+        pass
 
 
 def load_params(root_path):
