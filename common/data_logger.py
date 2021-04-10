@@ -9,6 +9,7 @@ import numpy as np
 import json
 from hyperparams.loader import Loader
 from common.preprocess import detokenize
+from common.utils import mask_after_stop
 
 
 class TrainLogger:
@@ -46,7 +47,8 @@ class TrainLogger:
             df.to_csv(self.log_path)
         else:
             df = pd.DataFrame(np.array([results]),
-                              columns=["Train Epoch Loss", "Train Epoch Acc", "Val Epoch Loss", "Val Epoch Acc"])
+                              columns=["Train Epoch Loss", "Train Epoch Acc", "Val Epoch Loss",
+                                       "Val Epoch Acc", "Val Bleu"])
             df.to_csv(self.log_path)
 
     def save_model(self, epoch, model, optimizer):
@@ -91,10 +93,10 @@ class TestLogger:
         df.to_csv(self.test_log_path)
 
     def log_examples(self, target_batch, prediction_batch, tokenizer):
+        prediction_batch = mask_after_stop(prediction_batch, stop_token=2)
         det_target = str(detokenize(target_batch, tokenizer[1])[0])
         det_pred = str(detokenize(prediction_batch, tokenizer[1])[0])
-        print(det_target)
-        print(det_pred)
+
         self.target_examples.append(det_target)
         self.pred_examples.append(det_pred)
 
