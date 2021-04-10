@@ -5,7 +5,7 @@ To train a model, run
 ```
 python train.py --name='my_model' 
 ```
-from the command line. See ```utils.arguments.py``` for a list of optional arguments.
+from the command line. See ```common.train_arguments.py``` for a list of optional arguments.
 
 A folder containing the outputs of the training run will be automatically created, with the default location of this 
 folder being ```..``` relative to the project root. The name of this folder is given by the required ```--name``` 
@@ -23,7 +23,15 @@ python train.py --name='my_model' --custom_model='model_name'
 ```
 Parameters defined in ```hyperparams/config.yml``` overwrite any parameters defined from the command line.
 
+To test a model, run
+```
+python test.py --name='my_model' --test_name='my_test' --custom_model='model_name'
+```
+This will automatically create a ```test``` folder inside the training folder, where the test logs will be stored. See
+```common.test_arguments.py``` for more testing options. 
+
+
 ## TODO
-* Inference loop
 * Test: train.py, test.py, etc.
-* Hyperparameter folder
+* Test: multilingual translation
+
