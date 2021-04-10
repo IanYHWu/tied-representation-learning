@@ -30,3 +30,8 @@ test_parser.add_argument(
     '--langs', nargs='+', default=['en', 'fr'],
     type=str, help='Languages to translate'
 )
+test_parser.add_argument(
+    '--teacher_forcing', default=False, type=bool,
+    help='Teacher forcing for inference'
+)
+

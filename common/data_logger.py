@@ -66,35 +66,40 @@ class TestLogger:
         self.params = params
         self.root = self.params.location
         self.name = self.params.name
-        self.test_name = self.test_name
+        self.test_name = self.params.test_name
         self.test_path = None
         self.test_log_path = None
         self.checkpoint_path = None
+        self.root_path = None
         self.target_examples = []
         self.pred_examples = []
 
     def make_dirs(self):
-        test_path = self.root + '/test'
-        checkpoint_path = self.root + '/checkpoint'
+        root_path = self.root + '/' + self.name
+        test_path = root_path + '/test'
+        checkpoint_path = root_path + '/checkpoint'
         if not os.path.isdir(test_path):
             os.makedirs(test_path)
         self.test_path = test_path
-        self.test_log_path = test_path + '/' + self.name + '.csv'
-        self.checkpoint_path = checkpoint_path
+        self.root_path = root_path
+        self.test_log_path = test_path + '/' + self.test_name + '.csv'
+        self.checkpoint_path = checkpoint_path + '/checkpoint'
 
     def log_results(self, results):
         df = pd.DataFrame(np.array([results]),
-                          columns=["Langs", "Test Loss", "Test Acc", "Test Bleu"])
+                          columns=["Langs", "Test Acc", "Test Bleu"])
         df.to_csv(self.test_log_path)
 
     def log_examples(self, target_batch, prediction_batch, tokenizer):
         det_target = str(detokenize(target_batch, tokenizer[1])[0])
         det_pred = str(detokenize(prediction_batch, tokenizer[1])[0])
+        print(det_target)
+        print(det_pred)
         self.target_examples.append(det_target)
         self.pred_examples.append(det_pred)
 
     def dump_examples(self):
-        with open(self.test_path + '/examples.txt', 'w') as f:
+        with open(self.test_path + '/' + self.test_name + '_examples.txt', 'w') as f:
             for pred, target in zip(self.pred_examples, self.target_examples):
                 f.write("Target: {} \n \n".format(target))
                 f.write("Prediction: {} \n \n".format(pred))
@@ -109,8 +114,8 @@ def load_params(root_path):
     return params
 
 
-def load_checkpoint(path, model, optimizer=None):
-    checkpoint = torch.load(path)
+def load_checkpoint(path, device, model, optimizer=None):
+    checkpoint = torch.load(path, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
