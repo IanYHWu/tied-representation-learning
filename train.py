@@ -3,9 +3,7 @@ Training Loop for MNMT
 """
 
 import torch
-import numpy as np
 import time
-import random
 
 import models.base_transformer as base_transformer
 import models.initialiser as initialiser
@@ -14,33 +12,8 @@ from common.train_arguments import train_parser
 from common import data_logger as logging
 from hyperparams.loader import Loader
 from hyperparams.schedule import WarmupDecay
-from common.metrics import compute_bleu
-
-
-def to_devices(tensors, device):
-    """ helper function to send tensors to device """
-    return (tensor.to(device) for tensor in tensors)
-
-
-def loss_fn(y_pred, y_true, criterion):
-    """ masked loss function """
-    _mask = torch.logical_not(y_true == 0).float()
-    _loss = criterion(y_pred, y_true)
-    return (_loss * _mask).sum() / _mask.sum()
-
-
-def accuracy_fn(y_pred, y_true):
-    """ masked accuracy function """
-    _mask = torch.logical_not(y_true == 0).float()
-    _acc = (torch.argmax(y_pred, axis=-1) == y_true)
-    return (_acc * _mask).sum() / _mask.sum()
-
-
-def sample_direction(data, langs):
-    """ randomly sample a source and target language from
-    n_langs possible combinations. """
-    source, target = np.random.choice(len(langs), size=(2,), replace=False)
-    return (data[source], data[target]), (langs[source], langs[target])
+from common.metrics import BLEU
+from common.utils import to_devices, accuracy_fn, loss_fn, sample_direction
 
 
 def train_step(x, y, model, criterion, optimizer, scheduler, device):
@@ -71,7 +44,7 @@ def train_step(x, y, model, criterion, optimizer, scheduler, device):
     return batch_loss, batch_acc
 
 
-def val_step(x, y, model, criterion, device):
+def val_step(x, y, model, criterion, bleu, device):
     # get masks and targets
     y_inp, y_tar = y[:, :-1], y[:, 1:]
     enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
@@ -90,6 +63,8 @@ def val_step(x, y, model, criterion, device):
     # metrics
     batch_loss = loss.item()
     batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
+
+    bleu(torch.argmax(y_pred, axis=-1), y_tar)
 
     return batch_loss, batch_acc
 
@@ -136,6 +111,7 @@ def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None)
         epoch_acc = 0.0
         val_epoch_loss = 0.0
         val_epoch_acc = 0.0
+        val_bleu = 0.0
         for i, data in enumerate(train_dataloader):
 
             if multi:
@@ -162,6 +138,8 @@ def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None)
 
         # val
         if val_dataloader is not None:
+            bleu = BLEU()
+            bleu.set_excluded_indices([0, 2])
             for i, data in enumerate(val_dataloader):
                 if multi:
                     # sample a tranlsation direction and add target tokens
@@ -170,15 +148,16 @@ def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None)
                 else:
                     x, y = data
 
-                batch_loss, batch_acc = val_step(x, y, model, criterion, device)
+                batch_loss, batch_acc = val_step(x, y, model, criterion, bleu, device)
                 val_epoch_loss += (batch_loss - val_epoch_loss) / (i + 1)
                 val_epoch_acc += (batch_acc - val_epoch_acc) / (i + 1)
 
             val_epoch_losses.append(val_epoch_loss)
             val_epoch_accs.append(val_epoch_acc)
+            val_bleu = bleu.get_metric()
 
-            print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f}'
-                  ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc,
+            print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
+                  ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu,
                                               time.time() - start_))
         else:
             print('Epoch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
@@ -187,7 +166,7 @@ def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None)
         epoch += 1
 
         logger.save_model(epoch, model, optimizer)
-        logger.log_results([epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc])
+        logger.log_results([epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu])
 
     return epoch_losses, epoch_accs, val_epoch_losses, val_epoch_accs
 
