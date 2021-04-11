@@ -30,6 +30,7 @@ def sample_direction(data, langs):
 
 def mask_after_stop(input_tensor, stop_token):
     """mask all tokens after the stop token"""
+    input_tensor = input_tensor.cpu()
     input_arr = input_tensor.numpy()
     match_indices = np.argwhere(input_arr == stop_token)
     batch_size, tensor_len = input_tensor.shape
