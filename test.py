@@ -11,7 +11,7 @@ from common.metrics import BLEU
 from common import preprocess
 from common.test_arguments import test_parser
 from hyperparams.loader import Loader
-from common.utils import to_devices, accuracy_fn, mask_after_stop
+from common.utils import to_devices, accuracy_fn, mask_after_stop, get_all_directions
 
 
 def inference_step(x, y, model, logger, tokenizer, device, bleu, teacher_forcing=False):
@@ -86,6 +86,12 @@ def test(device, params, test_dataloader, tokenizer):
     model = initialiser.initialise_model(train_params, device)
     model = logging.load_checkpoint(logger.checkpoint_path, device, model)
 
+    multi = False
+    if len(params.langs) > 2:
+        assert tokenizer is not None
+        multi = True
+        add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
+
     test_batch_accs = []
     bleu = BLEU()
     bleu.set_excluded_indices([0, 2])
@@ -95,6 +101,10 @@ def test(device, params, test_dataloader, tokenizer):
 
     print("Now testing")
     for i, (x, y) in enumerate(test_dataloader):
+
+        if multi:
+            x, y, y_lang = get_all_directions(data, params.langs)
+            x = add_targets(x, y_lang)
 
         test_batch_acc = inference_step(x, y, model, logger, tokenizer, device, bleu,
                                                          params.teacher_forcing)
@@ -126,7 +136,11 @@ def main(params):
         test(device, params, test_dataloader, tokenizers)
 
     else:
-        raise NotImplementedError
+        # multilingual translation
+        train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
+            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True)
+
+        test(device, params, test_dataloader, tokenizer)
 
 
 if __name__ == "__main__":
