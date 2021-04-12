@@ -118,7 +118,7 @@ def test(device, params, test_dataloader, tokenizer):
         curr_bleu = bleu.get_metric()
 
         if i % 50 == 0:
-            print('Epoch {} Accuracy {:.4f} Bleu {:.4f} in {:.4f} s per batch'.format(
+            print('Batch {} Accuracy {:.4f} Bleu {:.4f} in {:.4f} s per batch'.format(
                 i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
 
     test_bleu = bleu.get_metric()
