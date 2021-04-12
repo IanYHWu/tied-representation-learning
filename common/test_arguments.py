@@ -34,4 +34,12 @@ test_parser.add_argument(
     '--teacher_forcing', default=False, type=bool,
     help='Teacher forcing for inference'
 )
+test_parser.add_argument(
+    '--batch_size', default=20, type=int,
+    help='Batch size for datasets'
+)
+test_parser.add_argument(
+    '--vocab_size', default=2000, type=int,
+    help='Vocab size for tokenizers'
+)
 
