@@ -225,7 +225,7 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
         test_dataloader, _ = preprocess_multi(test_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len)
         
         # save tokenizers if trained
-        if (path is not None) and (tokenizer is not None):
+        if (path is not None) and (tokenizer is None):
             tokenizer.save(path + '/multi_tokenizer.json')
 
         return train_dataloader, val_dataloader, test_dataloader, tokenizer
@@ -239,7 +239,7 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
         test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size, tokenizers=tokenizers, max_len=max_len)
 
         #save tokenizers
-        if (path is not None) & (tokenizers is not None):
+        if (path is not None) & (tokenizers is None):
             for tok, lang in zip(tokenizers, langs):
                 tok.save(path + '/' + lang + '_tokenizer.json')
 
