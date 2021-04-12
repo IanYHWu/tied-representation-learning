@@ -195,13 +195,16 @@ def preprocess_multi(dataset, langs, batch_size=32, tokenizer=None, vocab_size=N
     return dataloader, tokenizer
 
 
-def load_and_preprocess(langs, batch_size, vocab_size, dataset_name, multi=True, max_len=None):
+def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
+    tokenizer=None, multi=True, max_len=None, path=None):
     """Load and preprocess the data.
     langs : list of language ids
     batch_size : batch_size for the dataloaders.
     vocab_size : size of the vocab(s) of tokenizer(s)
     dataset_name : string name for the huggingface dataset
-    multi : bool = True, wether to use a shared tokenizer for all languages.
+    tokenizer : tokenizer or list of tokenizers. If None tokenizer is trained.
+    multi : bool = True, wether to use a shared tokenizer for all languages
+    path : str = None, if given the location where the tokenizer will be saved.
 
     Returns: preprocessed dataloaders for train, val and test splits and
     the trained tokenizer(s)."""
@@ -215,20 +218,31 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name, multi=True,
     if multi:
         train_dataloader, tokenizer = preprocess_multi(train_dataset, langs,
                                                        batch_size=batch_size,
-                                                       tokenizer=None,
+                                                       tokenizer=tokenizer,
                                                        vocab_size=vocab_size,
                                                        max_len=max_len)
         val_dataloader, _ = preprocess_multi(val_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len)
         test_dataloader, _ = preprocess_multi(test_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len)
+        
+        # save tokenizers if trained
+        if (path is not None) and (tokenizer is not None):
+            tokenizer.save(path + '/multi_tokenizer.json')
+
         return train_dataloader, val_dataloader, test_dataloader, tokenizer
     else:
         train_dataloader, tokenizers = preprocess(train_dataset, langs,
                                                   batch_size=batch_size,
-                                                  tokenizers=None,
+                                                  tokenizers=tokenizer,
                                                   vocab_size=vocab_size,
                                                   max_len=max_len)
         val_dataloader, _ = preprocess(val_dataset, langs, batch_size=batch_size, tokenizers=tokenizers, max_len=max_len)
         test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size, tokenizers=tokenizers, max_len=max_len)
+
+        #save tokenizers
+        if (path is not None) & (tokenizers is not None):
+            for tok, lang in zip(tokenizers, langs):
+                tok.save(path + '/' + lang + '_tokenizer.json')
+
         return train_dataloader, val_dataloader, test_dataloader, tokenizers
 
 
@@ -300,8 +314,8 @@ class AddTargetTokens:
         for the target language token.
         """
         if isinstance(lang, list):
-            tokens = [x_.ids[1] for x_ in self.tokenizer.encode_batch(['[' + lang + ']' for lang in langs])]
-            tokens = torch.LongTensor(tokens)
+            tokens = [x_.ids[1] for x_ in self.tokenizer.encode_batch(['[' + l_ + ']' for l_ in lang])]
+            tokens = torch.LongTensor(tokens).unsqueeze(-1)
         else:
             token = self.tokenizer.encode('[' + lang + ']').ids[1]
             tokens = torch.ones(x.shape[0], 1, dtype=torch.long) * token

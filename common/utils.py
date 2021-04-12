@@ -38,13 +38,18 @@ def get_all_directions(data, langs):
     pairs.extend([(y,x) for x,y in pairs])
     source, target = list(zip(*pairs))
 
-    x = torch.nn.utils.rnn.pad_sequence([data[s].t() for s in source], padding_value = 0)
-    y = torch.nn.utils.rnn.pad_sequence([data[t].t() for t in target], padding_value = 0)
+    batch_size = data[0].shape[0]
+    full_targets = []
+    for t in target:
+        full_targets.extend(batch_size * [t])
+
+    x = torch.nn.utils.rnn.pad_sequence([data[langs.index(s)].t() for s in source], padding_value = 0)
+    y = torch.nn.utils.rnn.pad_sequence([data[langs.index(t)].t() for t in target], padding_value = 0)
 
     x = x.flatten(start_dim = 1).t() # (batch * n_directions, max_len)
     y = y.flatten(start_dim = 1).t()
 
-    return x, y, list(target)
+    return x, y, full_targets
 
 
 def mask_after_stop(input_tensor, stop_token):

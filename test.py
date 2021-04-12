@@ -4,6 +4,7 @@ Inference Loop for MNMT
 
 import torch
 import time
+from tokenizers import Tokenizer
 from models import base_transformer
 from models import initialiser
 from common import data_logger as logging
@@ -100,11 +101,13 @@ def test(device, params, test_dataloader, tokenizer):
     start_ = time.time()
 
     print("Now testing")
-    for i, (x, y) in enumerate(test_dataloader):
+    for i, data in enumerate(test_dataloader):
 
         if multi:
             x, y, y_lang = get_all_directions(data, params.langs)
             x = add_targets(x, y_lang)
+        else:
+            x, y = data
 
         test_batch_acc = inference_step(x, y, model, logger, tokenizer, device, bleu,
                                                          params.teacher_forcing)
@@ -130,15 +133,29 @@ def main(params):
 
     if len(params.langs) == 2:
         # bilingual translation
+
+        try: # check for existing tokenizers
+            tokenizers = [Tokenizer.from_file(params.location+'/'+lang+'_tokenizer.json') for lang in langs]
+        except:
+            tokenizers = None
+
         train_dataloader, val_dataloader, test_dataloader, tokenizers = preprocess.load_and_preprocess(
-            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False)
+            params.langs, params.batch_size, params.vocab_size, params.dataset,
+            tokenizer=tokenizers, multi=False)
 
         test(device, params, test_dataloader, tokenizers)
 
     else:
         # multilingual translation
+
+        try: # check for existing tokenizers
+            tokenizer = Tokenizer.from_file(params.location + '/multi_tokenizer.json')
+        except:
+            tokenizer = None
+
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
-            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True)
+            params.langs, params.batch_size, params.vocab_size, params.dataset,
+            tokenizer=tokenizer, multi=True)
 
         test(device, params, test_dataloader, tokenizer)
 
