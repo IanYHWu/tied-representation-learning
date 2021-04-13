@@ -78,4 +78,7 @@ train_parser.add_argument(
     '--lr_scale', default=1.0, type=float,
     help='Scale for learning rate schedule'
 )
-
+train_parser.add_argument(
+    '--frozen_layers', default=[0], type=int,
+    help='Indices of layers to freeze'
+)
