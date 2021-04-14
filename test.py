@@ -154,7 +154,8 @@ def test(device, params, test_dataloader, tokenizer):
             x, y = data
 
         test_batch_acc = inference_step(x, y, model, logger, tokenizer, device, bleu,
-                                                         params.teacher_forcing)
+                                                         params.teacher_forcing,
+                                                         params.beam_length)
 
         test_batch_accs.append(test_batch_acc)
 
