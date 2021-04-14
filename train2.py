@@ -2,21 +2,20 @@
 Training Loop for MNMT
 """
 
-import torch
-import numpy as np
 import time
-import random
+from copy import deepcopy
+
+import numpy as np
+import torch
+from einops import rearrange
 
 import models.base_transformer as base_transformer
 import models.initialiser as initialiser
+from common import data_logger as logging
 from common import preprocess
 from common.train_arguments import train_parser
-from common import data_logger as logging
 from hyperparams.loader import Loader
 from hyperparams.schedule import WarmupDecay
-from common.metrics import compute_bleu
-from einops import rearrange
-from copy import deepcopy
 
 
 def to_devices(tensors, device):
