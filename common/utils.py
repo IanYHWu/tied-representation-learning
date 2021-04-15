@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from itertools import combinations
 
 
 def to_devices(tensors, device):
@@ -26,6 +27,29 @@ def sample_direction(data, langs):
     n_langs possible combinations"""
     source, target = np.random.choice(len(langs), size=(2,), replace=False)
     return (data[source], data[target]), (langs[source], langs[target])
+
+
+def get_all_directions(data, langs):
+    """unpacks all translation pairs from a batch of translations. Takes
+    a dict of batches of tensors and returns a tensor of first dim size
+    batch_size * len(langs) * (len(langs) - 1)."""
+
+    pairs = list(combinations(langs, 2))
+    pairs.extend([(y,x) for x,y in pairs])
+    source, target = list(zip(*pairs))
+
+    batch_size = data[0].shape[0]
+    full_targets = []
+    for t in target:
+        full_targets.extend(batch_size * [t])
+
+    x = torch.nn.utils.rnn.pad_sequence([data[langs.index(s)].t() for s in source], padding_value = 0)
+    y = torch.nn.utils.rnn.pad_sequence([data[langs.index(t)].t() for t in target], padding_value = 0)
+
+    x = x.flatten(start_dim = 1).t() # (batch * n_directions, max_len)
+    y = y.flatten(start_dim = 1).t()
+
+    return x, y, full_targets
 
 
 def mask_after_stop(input_tensor, stop_token):

@@ -84,7 +84,31 @@ def train_tokenizer(langs, dataset, vocab_size):
     return tokenizer
 
 
-def preprocess(dataset, langs, batch_size=32, tokenizers=None, vocab_size=None):
+def pad_sequence(sequences, batch_first=False, padding_value=0.0, max_len = None):
+    """ Same as torch.nn.utils.rnn.pad_sequence but adds the
+    option of padding sequences to a fixed length."""
+    max_size = sequences[0].size()
+    trailing_dims = max_size[1:]
+    if max_len is None:
+        max_len = max([s.size(0) for s in sequences])
+    if batch_first:
+        out_dims = (len(sequences), max_len) + trailing_dims
+    else:
+        out_dims = (max_len, len(sequences)) + trailing_dims
+
+    out_tensor = sequences[0].new_full(out_dims, padding_value)
+    for i, tensor in enumerate(sequences):
+        length = tensor.size(0)
+        # use index notation to prevent duplicate references to the tensor
+        if batch_first:
+            out_tensor[i, :length, ...] = tensor
+        else:
+            out_tensor[:length, i, ...] = tensor
+
+    return out_tensor
+
+
+def preprocess(dataset, langs, batch_size=32, tokenizers=None, vocab_size=None, max_len=None):
     """Applies full preprocessing to dataset: filtering, tokenization,
     padding and conversion to torch dataloader.
     dataset : HuggingFace Ted-Multi Dataset
@@ -118,7 +142,7 @@ def preprocess(dataset, langs, batch_size=32, tokenizers=None, vocab_size=None):
     def pad_seqs(examples):
         """Apply padding"""
         ex_langs = list(zip(*[tuple(ex[col] for col in cols) for ex in examples]))
-        ex_langs = tuple(torch.nn.utils.rnn.pad_sequence(x, batch_first=True) for x in ex_langs)
+        ex_langs = tuple(pad_sequence(x, batch_first=True) for x in ex_langs)
         return ex_langs
 
     dataloader = torch.utils.data.DataLoader(dataset,
@@ -128,7 +152,7 @@ def preprocess(dataset, langs, batch_size=32, tokenizers=None, vocab_size=None):
     return dataloader, tokenizers
 
 
-def preprocess_multi(dataset, langs, batch_size=32, tokenizer=None, vocab_size=None):
+def preprocess_multi(dataset, langs, batch_size=32, tokenizer=None, vocab_size=None, max_len=None):
     """Applies full preprocessing to dataset: filtering, tokenization,
     padding and conversion to torch dataloader.
     dataset : HuggingFace Ted-Multi Dataset
@@ -161,7 +185,7 @@ def preprocess_multi(dataset, langs, batch_size=32, tokenizer=None, vocab_size=N
     def pad_seqs(examples):
         """Apply padding"""
         ex_langs = list(zip(*[tuple(ex[col] for col in cols) for ex in examples]))
-        ex_langs = tuple(torch.nn.utils.rnn.pad_sequence(x, batch_first=True) for x in ex_langs)
+        ex_langs = tuple(pad_sequence(x, batch_first=True, max_len=max_len) for x in ex_langs)
         return ex_langs
 
     dataloader = torch.utils.data.DataLoader(dataset,
@@ -171,13 +195,16 @@ def preprocess_multi(dataset, langs, batch_size=32, tokenizer=None, vocab_size=N
     return dataloader, tokenizer
 
 
-def load_and_preprocess(langs, batch_size, vocab_size, dataset_name, multi=True):
+def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
+    tokenizer=None, multi=True, max_len=None, path=None):
     """Load and preprocess the data.
     langs : list of language ids
     batch_size : batch_size for the dataloaders.
     vocab_size : size of the vocab(s) of tokenizer(s)
     dataset_name : string name for the huggingface dataset
-    multi : bool = True, wether to use a shared tokenizer for all languages.
+    tokenizer : tokenizer or list of tokenizers. If None tokenizer is trained.
+    multi : bool = True, wether to use a shared tokenizer for all languages
+    path : str = None, if given the location where the tokenizer will be saved.
 
     Returns: preprocessed dataloaders for train, val and test splits and
     the trained tokenizer(s)."""
@@ -188,21 +215,36 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name, multi=True)
     val_dataset = dataset['validation']
     test_dataset = dataset['test']
 
+    save_tokenizer = True if tokenizer is None else False
+
     if multi:
         train_dataloader, tokenizer = preprocess_multi(train_dataset, langs,
                                                        batch_size=batch_size,
-                                                       tokenizer=None,
-                                                       vocab_size=vocab_size)
-        val_dataloader, _ = preprocess_multi(val_dataset, langs, batch_size=batch_size, tokenizer=tokenizer)
-        test_dataloader, _ = preprocess_multi(test_dataset, langs, batch_size=batch_size, tokenizer=tokenizer)
+                                                       tokenizer=tokenizer,
+                                                       vocab_size=vocab_size,
+                                                       max_len=max_len)
+        val_dataloader, _ = preprocess_multi(val_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len)
+        test_dataloader, _ = preprocess_multi(test_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len)
+        
+        # save tokenizers if trained
+        if (path is not None) and (save_tokenizer):
+            tokenizer.save(path + '/multi_tokenizer.json')
+
         return train_dataloader, val_dataloader, test_dataloader, tokenizer
     else:
         train_dataloader, tokenizers = preprocess(train_dataset, langs,
                                                   batch_size=batch_size,
-                                                  tokenizers=None,
-                                                  vocab_size=vocab_size)
-        val_dataloader, _ = preprocess(val_dataset, langs, batch_size=batch_size, tokenizers=tokenizers)
-        test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size, tokenizers=tokenizers)
+                                                  tokenizers=tokenizer,
+                                                  vocab_size=vocab_size,
+                                                  max_len=max_len)
+        val_dataloader, _ = preprocess(val_dataset, langs, batch_size=batch_size, tokenizers=tokenizers, max_len=max_len)
+        test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size, tokenizers=tokenizers, max_len=max_len)
+
+        #save tokenizers
+        if (path is not None) & (save_tokenizer):
+            for tok, lang in zip(tokenizers, langs):
+                tok.save(path + '/' + lang + '_tokenizer.json')
+
         return train_dataloader, val_dataloader, test_dataloader, tokenizers
 
 
@@ -267,14 +309,18 @@ class AddTargetTokens:
     def __call__(self, x, lang):
         """
         x : batch of tensors (batch, seq_len)
-        lang : tag of desired target language
+        lang : tag of desired target language or list of target_languages
 
         Returns: batch of tensors (batch, seq_len + 1)
         where the dimension x[:,0] now contains the token
         for the target language token.
         """
-        token = self.tokenizer.encode('[' + lang + ']').ids[1]
-        tokens = torch.ones(x.shape[0], 1, dtype=torch.long) * token
+        if isinstance(lang, list):
+            tokens = [x_.ids[1] for x_ in self.tokenizer.encode_batch(['[' + l_ + ']' for l_ in lang])]
+            tokens = torch.LongTensor(tokens).unsqueeze(-1)
+        else:
+            token = self.tokenizer.encode('[' + lang + ']').ids[1]
+            tokens = torch.ones(x.shape[0], 1, dtype=torch.long) * token
         return torch.cat([tokens, x], dim=1)
 
 

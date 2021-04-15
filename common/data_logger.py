@@ -94,8 +94,10 @@ class TestLogger:
 
     def log_examples(self, target_batch, prediction_batch, tokenizer):
         prediction_batch = mask_after_stop(prediction_batch, stop_token=2)
-        det_target = str(detokenize(target_batch, tokenizer[1])[0])
-        det_pred = str(detokenize(prediction_batch, tokenizer[1])[0])
+        if isinstance(tokenizer, list):
+            tokenizer = tokenizer[1]
+        det_target = str(detokenize(target_batch, tokenizer)[0])
+        det_pred = str(detokenize(prediction_batch, tokenizer)[0])
 
         self.target_examples.append(det_target)
         self.pred_examples.append(det_pred)

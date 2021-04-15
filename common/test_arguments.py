@@ -34,6 +34,18 @@ test_parser.add_argument(
     '--teacher_forcing', action='store_true',
     help='Teacher forcing for inference'
 )
+test_parser.add_argument(
+    '--batch_size', default=20, type=int,
+    help='Batch size for datasets'
+)
+test_parser.add_argument(
+    '--vocab_size', default=2000, type=int,
+    help='Vocab size for tokenizers'
+)
+test_parser.add_argument(
+    '--beam_length', default=1, type=int,
+    help='1 for greedy inference. >1 for n-beam search.'
+)
 
 
 
