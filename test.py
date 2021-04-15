@@ -107,7 +107,7 @@ def inference_step(x, y, model, logger, tokenizer, device, bleu=None,
         enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_tar)
 
         # devices
-        x, y_tar, enc_mask = to_devices((x, y_tar, enc_mask), device)
+        x, y, y_tar, enc_mask = to_devices((x, y, y_tar, enc_mask), device)
 
         # inference
         model.eval()
