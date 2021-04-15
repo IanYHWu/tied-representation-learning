@@ -68,16 +68,7 @@ def val_step(x, y, model, criterion, bleu, device):
 
     return batch_loss, batch_acc
 
-
-def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None):
-    """Training Loop"""
-
-    multi = False
-    if len(params.langs) > 2:
-        assert tokenizer is not None
-        multi = True
-        add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
-
+def setup(params):
     new_root_path = params.location
     new_name = params.name
     if params.checkpoint:
@@ -92,6 +83,16 @@ def train(device, params, train_dataloader, val_dataloader=None, tokenizer=None)
         logger = logging.TrainLogger(params)
         logger.make_dirs()
     logger.save_params()
+    return logger
+
+def train(device, logger, params, train_dataloader, val_dataloader=None, tokenizer=None):
+    """Training Loop"""
+
+    multi = False
+    if len(params.langs) > 2:
+        assert tokenizer is not None
+        multi = True
+        add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
 
     model = initialiser.initialise_model(params, device)
     optimizer = torch.optim.Adam(model.parameters())
@@ -177,21 +178,22 @@ def main(params):
     """ Loads the dataset and trains the model."""
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger = setup(params)
 
     if len(params.langs) == 2:
         # bilingual translation
 
         train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
-            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False)
+            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False, path=logger.root_path)
 
-        train(device, params, train_dataloader, val_dataloader=val_dataloader)
+        train(device, logger, params, train_dataloader, val_dataloader=val_dataloader)
     else:
         # multilingual translation
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
-            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True)
+            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path)
 
-        train(device, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer)
+        train(device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer)
 
 
 if __name__ == "__main__":

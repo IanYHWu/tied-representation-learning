@@ -16,7 +16,7 @@ train_parser.add_argument(
 )
 train_parser.add_argument(
     '--checkpoint', action='store_true',
-    type=bool, help="Load from checkpoint"
+    help="Load from checkpoint"
 )
 train_parser.add_argument(
     '--custom_model', default=None,
