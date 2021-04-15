@@ -70,7 +70,8 @@ def beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2):
     return y[:, 0, 1:] # (batch, tar_len)
 
 
-def inference_step(x, y, model, logger, tokenizer, device, bleu, teacher_forcing=False, beam_length=1):
+def inference_step(x, y, model, logger, tokenizer, device, bleu=None,
+    teacher_forcing=False, pivot_mode=False, beam_length=1):
     """
     inference step.
     x: source language
@@ -91,10 +92,13 @@ def inference_step(x, y, model, logger, tokenizer, device, bleu, teacher_forcing
         with torch.no_grad():
             y_pred, _ = model(x, y_inp, enc_mask, look_ahead_mask, dec_mask)
 
-        batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
-        bleu(torch.argmax(y_pred, axis=-1), y_tar)
-
-        logger.log_examples(y_tar, torch.argmax(y_pred, axis=-1), tokenizer)
+        if not pivot_mode:
+            batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
+            bleu(torch.argmax(y_pred, axis=-1), y_tar)
+            logger.log_examples(y_tar, torch.argmax(y_pred, axis=-1), tokenizer)
+            return batch_acc
+        else:
+            return y_pred
 
     else:
         # Retrieve the start of sequence token and the target translation
@@ -112,13 +116,15 @@ def inference_step(x, y, model, logger, tokenizer, device, bleu, teacher_forcing
             y_pred = beam_search(x, y, y_tar, model, enc_mask=enc_mask, beam_length=beam_length)
 
         # loss and metrics
-        batch_acc = 0
-        # batch_acc = accuracy_fn(y_pred, y_tar)
-        bleu(y_pred, y_tar)
-
-        logger.log_examples(y_tar, y_pred, tokenizer)
-
-    return batch_acc
+        if not pivot_mode:
+            batch_acc = 0
+            # batch_acc = accuracy_fn(y_pred, y_tar)
+            if bleu is not None:
+                bleu(y_pred, y_tar)
+            logger.log_examples(y_tar, y_pred, tokenizer)
+            return batch_acc
+        else:
+            return y_pred
 
 
 def test(device, params, test_dataloader, tokenizer):
@@ -143,6 +149,8 @@ def test(device, params, test_dataloader, tokenizer):
 
     test_acc = 0.0
     start_ = time.time()
+
+    print(params.__dict__)
 
     print("Now testing")
     for i, data in enumerate(test_dataloader):
@@ -169,6 +177,47 @@ def test(device, params, test_dataloader, tokenizer):
     test_bleu = bleu.get_metric()
     logger.log_results([params.langs, test_acc, test_bleu])
     logger.dump_examples()
+
+
+def pivot_test(device, params, test_dataloader, tokenizers):
+    logger = logging.TestLogger(params)
+    logger.make_dirs()
+    train_params = logging.load_params(params.location + '/' + params.name)
+
+    model_1 = initialiser.initialise_model(train_params, device)
+    model_1 = logging.load_checkpoint(logger.checkpoint_path, device, model_1)
+    tokenizer_1 = tokenizers[0]
+
+    model_2 = initialiser.initialise_model(train_params, device)
+    model_2 = logging.load_checkpoint(logger.checkpoint_path, device, model_2)
+    tokenizer_2 = tokenizers[1]
+
+    test_batch_accs = []
+    bleu = BLEU()
+    bleu.set_excluded_indices([0, 2])
+
+    test_acc = 0.0
+    start_ = time.time()
+
+    for i, data in enumerate(test_dataloader):
+        x_1, y_1, y_2 = data[0], data[1], data[2]
+
+        y_pred_1 = inference_step(x_1, y_1, model_1, logger, tokenizer_1, device,
+                       params.teacher_forcing, pivot_mode=True)
+
+        test_batch_acc = inference_step(y_pred_1, y_2, model_2, logger, tokenizer_2, device, bleu,
+                                  params.teacher_forcing, pivot_mode=False)
+
+        test_batch_accs.append(test_batch_acc)
+
+        test_acc += (test_batch_acc - test_acc) / (i + 1)
+        curr_bleu = bleu.get_metric()
+
+        if i % 50 == 0:
+            print('Batch {} Accuracy {:.4f} Bleu {:.4f} in {:.4f} s per batch'.format(
+                i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
+
+    test_bleu = bleu.get_metric()
 
 
 def main(params):

@@ -31,7 +31,7 @@ test_parser.add_argument(
     type=str, help='Languages to translate'
 )
 test_parser.add_argument(
-    '--teacher_forcing', default=False, type=bool,
+    '--teacher_forcing', action='store_true',
     help='Teacher forcing for inference'
 )
 test_parser.add_argument(
