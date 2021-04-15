@@ -73,6 +73,7 @@ def beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2):
 
 def inference_step(x, y, model, logger, tokenizer, device, bleu=None,
     teacher_forcing=False, pivot_mode=False, beam_length=1):
+
     """
     inference step.
     x: source language
