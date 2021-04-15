@@ -44,6 +44,15 @@ def train_step(x, y, model, criterion, optimizer, scheduler, device):
     return batch_loss, batch_acc
 
 
+def param_freeze(model, frozen_layers):
+    """freeze parameters of encoder layers for any layer in frozen_layers."""
+    for i, layer in enumerate(model.encoder.enc_layers):
+        if i in frozen_layers:
+            for param in layer.parameters():
+                param.requires_grad = False
+    return model
+    
+
 def aux_train_step(x, y, model, criterion, aux_criterion, frozen_layers, optimizer, scheduler, device):
     """ Single training step using an auxiliary loss on the encoder outputs."""
 
