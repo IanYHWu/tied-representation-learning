@@ -44,6 +44,48 @@ def train_step(x, y, model, criterion, optimizer, scheduler, device):
     return batch_loss, batch_acc
 
 
+def aux_train_step(x, y, model, criterion, aux_criterion, frozen_layers, optimizer, scheduler, device):
+    """ Single training step using an auxiliary loss on the encoder outputs."""
+
+    # get masks and targets
+    y_inp, y_tar = y[:, :-1], y[:, 1:]
+    enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
+
+    # mask for the target language encoded representation.
+    enc_mask_aux = base_transformer.create_mask(y_inp)
+
+    # devices
+    x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux = to_devices(
+        (x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux),
+        device)
+
+    model.train()
+    optimizer.zero_grad()
+
+    x_enc = model.encoder(x, enc_mask)
+    y_pred, _ = model.final_layer(model.decoder(y_inp, x_enc, look_ahead_mask, dec_mask)[0])
+    y_enc = model.encoder(y_tar, enc_mask_aux)
+
+    # main loss.
+    loss_main = loss_fn(y_pred.permute(0, 2, 1), y_tar, criterion)
+    loss_main.backward(retain_graph=True)
+
+    # aux loss
+    model = param_freeze(model, frozen_layers)
+    loss_aux = auxiliary_loss_fn(x_enc, y_enc, criterion, x_mask=enc_mask, y_mask=enc_mask_aux)
+    loss_aux.backward()
+
+    optimizer.step()
+    scheduler.step()
+
+    # metrics
+    loss = loss_main + loss_aux
+    batch_loss = loss.detach().cpu().item()
+    batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
+
+    return batch_loss, batch_acc
+
+
 def val_step(x, y, model, criterion, bleu, device):
     # get masks and targets
     y_inp, y_tar = y[:, :-1], y[:, 1:]
@@ -98,6 +140,11 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
     optimizer = torch.optim.Adam(model.parameters())
     scheduler = WarmupDecay(optimizer, params.warmup_steps, params.d_model, lr_scale=params.lr_scale)
     criterion = torch.nn.CrossEntropyLoss(reduction='none')
+    if params.auxiliary:
+        _aux_criterion = torch.nn.CosineEmbeddingLoss(reduction='mean')
+        _target = torch.tensor(1.0)
+        aux_criterion = lambda x, y: params.aux_strength * _aux_criterion(x, y, _target)
+
     epoch = 0
     if params.checkpoint:
         model, optimizer, epoch = logging.load_checkpoint(logger.checkpoint_path, model, optimizer)
@@ -124,7 +171,11 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
             else:
                 x, y = data
 
-            batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, scheduler, device)
+            if params.auxiliary:
+                batch_loss, batch_acc = aux_train_step(x, y, model, criterion, aux_criterion,
+                    params.frozen_layers, optimizer, scheduler, device)
+            else:
+                batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, scheduler, device)
 
             batch_losses.append(batch_loss)
             batch_accs.append(batch_acc)
