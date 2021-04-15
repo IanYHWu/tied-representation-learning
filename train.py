@@ -13,7 +13,7 @@ from common import data_logger as logging
 from hyperparams.loader import Loader
 from hyperparams.schedule import WarmupDecay
 from common.metrics import BLEU
-from common.utils import to_devices, accuracy_fn, loss_fn, sample_direction, auxiliary_loss_fn
+from common.utils import to_devices, accuracy_fn, loss_fn, auxiliary_loss_fn, sample_direction
 
 
 def train_step(x, y, model, criterion, optimizer, scheduler, device):
@@ -63,7 +63,7 @@ def aux_train_step(x, y, model, criterion, aux_criterion, frozen_layers, optimiz
     optimizer.zero_grad()
 
     x_enc = model.encoder(x, enc_mask)
-    y_pred, _ = model.final_layer(model.decoder(y_inp, x_enc, look_ahead_mask, dec_mask)[0])
+    y_pred = model.final_layer(model.decoder(y_inp, x_enc, look_ahead_mask, dec_mask)[0])
     y_enc = model.encoder(y_tar, enc_mask_aux)
 
     # main loss.
