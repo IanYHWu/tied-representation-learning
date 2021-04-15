@@ -15,8 +15,8 @@ train_parser.add_argument(
     type=str, help="Save folder location"
 )
 train_parser.add_argument(
-    '--checkpoint', default=False,
-    type=bool, help="Load from checkpoint"
+    '--checkpoint', action='store_true',
+    help="Load from checkpoint"
 )
 train_parser.add_argument(
     '--custom_model', default=None,
@@ -77,5 +77,9 @@ train_parser.add_argument(
 train_parser.add_argument(
     '--lr_scale', default=1.0, type=float,
     help='Scale for learning rate schedule'
+)
+train_parser.add_argument(
+    '--add_epochs', default=0, type=int,
+    help='Add epochs to train. Used for checkpointing'
 )
 

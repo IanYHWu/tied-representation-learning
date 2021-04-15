@@ -30,7 +30,7 @@ aiayn:
 hs_model:
   model: base
   vocab_size: 20000
-  batch_size: 64
+  batch_size: 20
   layers: 4
   heads: 4
   dff: 1024
@@ -39,7 +39,7 @@ hs_model:
   dropout: 0.1
   epochs: 15
   warmup_steps: 4000
-  lr_scale: 1.0
+  lr_scale: 0.8
 
 hs_model_small:
   model: base
