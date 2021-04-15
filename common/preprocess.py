@@ -215,6 +215,8 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
     val_dataset = dataset['validation']
     test_dataset = dataset['test']
 
+    save_tokenizer = True if tokenizer is None else False
+
     if multi:
         train_dataloader, tokenizer = preprocess_multi(train_dataset, langs,
                                                        batch_size=batch_size,
@@ -225,7 +227,7 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
         test_dataloader, _ = preprocess_multi(test_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len)
         
         # save tokenizers if trained
-        if (path is not None) and (tokenizer is None):
+        if (path is not None) and (save_tokenizer):
             tokenizer.save(path + '/multi_tokenizer.json')
 
         return train_dataloader, val_dataloader, test_dataloader, tokenizer
@@ -239,7 +241,7 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
         test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size, tokenizers=tokenizers, max_len=max_len)
 
         #save tokenizers
-        if (path is not None) & (tokenizers is None):
+        if (path is not None) & (save_tokenizer):
             for tok, lang in zip(tokenizers, langs):
                 tok.save(path + '/' + lang + '_tokenizer.json')
 

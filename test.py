@@ -36,18 +36,19 @@ def greedy_search(x, y, y_tar, model, enc_mask=None):
 
 def beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2):
     """Inference loop exploring the n most probable paths at each step."""
-    x_enc = model.encoder(x, enc_mask)
+    x_enc = model.encoder(x, enc_mask).unsqueeze(1).repeat(1, beam_length, 1, 1)
+    x_enc = x_enc.reshape(-1, x_enc.size(2), x_enc.size(3))
     decode = lambda y : F.log_softmax(model.final_layer(model.decoder(y, x_enc, None, None)[0]), dim=-1)
 
     # initial beams and probabilities
     y = y.unsqueeze(1).repeat(1, beam_length, 1)
-    log_p = torch.zeros(y.size()[0], beam_length).to(y.device) # (batch, 1)
+    log_p = torch.zeros(y.size(0), beam_length).to(y.device) # (batch, beam)
 
     for t in range(y_tar.size(1)):
         with torch.no_grad():
 
             # expand beams
-            output = decode(y.reshape(-1, y.size()[-1]))[:, -1, :] # (batch*beam, vocab_size)
+            output = decode(y.reshape(-1, y.size(-1)))[:, -1, :] # (batch*beam, vocab_size)
             new_log_p, new_tokens = torch.topk(output, beam_length, dim=-1) # (batch*beam, beam)
 
             # get probability of each beam and trim beams
@@ -58,14 +59,14 @@ def beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2):
             new_tokens = torch.gather(new_tokens.reshape(-1, beam_length*beam_length), 1, indices)
 
             # get the new beams
-            y_ = y.unsqueeze(2).repeat(1, 1, beam_length, 1).reshape(-1, beam_length*beam_length, y.size()[-1])
-            new_y = torch.gather(y_, 1, indices.unsqueeze(-1).repeat(1, 1, y_.size()[-1])) # (batch, beam, seq_len)
+            y_ = y.unsqueeze(2).repeat(1, 1, beam_length, 1).reshape(-1, beam_length*beam_length, y.size(-1))
+            new_y = torch.gather(y_, 1, indices.unsqueeze(-1).repeat(1, 1, y_.size(-1))) # (batch, beam, seq_len)
 
             y = torch.cat([new_y, new_tokens.unsqueeze(-1)], dim=-1) # (batch, beam, seq_len + 1)
 
     # get the beam with the highest log prob
     best_beam = log_p.argmax(-1, keepdim=True) # (batch,)
-    y = torch.gather(y, 1, best_beam.unsqueeze(-1).repeat(1, 1, y_pred.size()[-1])) # (batch, tar_len+1)
+    y = torch.gather(y, 1, best_beam.unsqueeze(-1).repeat(1, 1, y.size(-1))) # (batch, tar_len+1)
 
     return y[:, 0, 1:] # (batch, tar_len)
 
@@ -161,9 +162,9 @@ def test(device, params, test_dataloader, tokenizer):
         else:
             x, y = data
 
-        test_batch_acc = inference_step(x, y, model, logger, tokenizer, device, bleu,
-                                                         params.teacher_forcing,
-                                                         params.beam_length)
+        test_batch_acc = inference_step(x, y, model, logger, tokenizer, device, bleu=bleu,
+                                                         teacher_forcing=params.teacher_forcing,
+                                                         beam_length=params.beam_length)
 
         test_batch_accs.append(test_batch_acc)
 
@@ -203,10 +204,12 @@ def pivot_test(device, params, test_dataloader, tokenizers):
         x_1, y_1, y_2 = data[0], data[1], data[2]
 
         y_pred_1 = inference_step(x_1, y_1, model_1, logger, tokenizer_1, device,
-                       params.teacher_forcing, pivot_mode=True)
+                       teacher_forcing=params.teacher_forcing, pivot_mode=True)
 
-        test_batch_acc = inference_step(y_pred_1, y_2, model_2, logger, tokenizer_2, device, bleu,
-                                  params.teacher_forcing, pivot_mode=False)
+        test_batch_acc = inference_step(y_pred_1, y_2, model_2, logger, tokenizer_2, device, bleu=bleu,
+                                                         teacher_forcing=params.teacher_forcing,
+                                                         beam_length=params.beam_length,
+                                                         pivot_mode=False)
 
         test_batch_accs.append(test_batch_acc)
 
