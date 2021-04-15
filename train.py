@@ -13,7 +13,7 @@ from common import data_logger as logging
 from hyperparams.loader import Loader
 from hyperparams.schedule import WarmupDecay
 from common.metrics import BLEU
-from common.utils import to_devices, accuracy_fn, loss_fn, sample_direction
+from common.utils import to_devices, accuracy_fn, loss_fn, sample_direction, auxiliary_loss_fn
 
 
 def train_step(x, y, model, criterion, optimizer, scheduler, device):
