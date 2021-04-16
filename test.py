@@ -172,16 +172,17 @@ def test(device, params, test_dataloader, tokenizer):
         test_acc += (test_batch_acc - test_acc) / (i + 1)
         curr_bleu = bleu.get_metric()
 
-        if i % 50 == 0:
-            print('Batch {} Accuracy {:.4f} Bleu {:.4f} in {:.4f} s per batch'.format(
-                i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
+        if verbose is not None:
+            if i % verbose == 0:
+                print('Batch {} Accuracy {:.4f} Bleu {:.4f} in {:.4f} s per batch'.format(
+                    i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
 
     test_bleu = bleu.get_metric()
     logger.log_results([params.langs, test_acc, test_bleu])
     logger.dump_examples()
 
 
-def pivot_test(device, params, test_dataloader, tokenizers):
+def pivot_test(device, params, test_dataloader, tokenizers, verbose=50):
     logger = logging.TestLogger(params)
     logger.make_dirs()
     train_params = logging.load_params(params.location + '/' + params.name)
@@ -217,9 +218,10 @@ def pivot_test(device, params, test_dataloader, tokenizers):
         test_acc += (test_batch_acc - test_acc) / (i + 1)
         curr_bleu = bleu.get_metric()
 
-        if i % 50 == 0:
-            print('Batch {} Accuracy {:.4f} Bleu {:.4f} in {:.4f} s per batch'.format(
-                i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
+        if verbose is not None:
+            if i % verbose == 0:
+                print('Batch {} Accuracy {:.4f} Bleu {:.4f} in {:.4f} s per batch'.format(
+                    i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
 
     test_bleu = bleu.get_metric()
 
@@ -241,7 +243,7 @@ def main(params):
             params.langs, params.batch_size, params.vocab_size, params.dataset,
             tokenizer=tokenizers, multi=False)
 
-        test(device, params, test_dataloader, tokenizers)
+        test(device, params, test_dataloader, tokenizers, verbose=params.verbose)
 
     else:
         # multilingual translation
@@ -255,7 +257,7 @@ def main(params):
             params.langs, params.batch_size, params.vocab_size, params.dataset,
             tokenizer=tokenizer, multi=True)
 
-        test(device, params, test_dataloader, tokenizer)
+        test(device, params, test_dataloader, tokenizer, verbose=params.verbose)
 
 
 if __name__ == "__main__":

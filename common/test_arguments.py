@@ -46,6 +46,10 @@ test_parser.add_argument(
     '--beam_length', default=1, type=int,
     help='1 for greedy inference. >1 for n-beam search.'
 )
+test_parser.add_argument(
+    '--verbose', default=50, type=int,
+    help='Frequency to print batch results.'
+)
 
 
 

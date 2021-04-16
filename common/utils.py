@@ -26,7 +26,7 @@ def auxiliary_loss_fn(x_enc, y_enc, criterion, x_mask=None, y_mask=None):
         y_mask = -9999.0 * y_mask.reshape(y_mask.size(0), -1, 1)
         y_enc += y_mask
 
-    # max pooling (batch, 1)
+    # max pooling (batch, emb_dim)
     x_enc = torch.max(x_enc, dim=1)[0]
     y_enc = torch.max(y_enc, dim=1)[0]
 

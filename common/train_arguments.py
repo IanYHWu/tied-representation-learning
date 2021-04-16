@@ -94,4 +94,8 @@ train_parser.add_argument(
     '--aux_strength', default=1.0, type=float,
     help='Strength of auxiliary loss relative to main loss.'
 )
+train_parser.add_argument(
+    '--verbose', default=50, type=int,
+    help='Frequency to print batch results.'
+)
 
