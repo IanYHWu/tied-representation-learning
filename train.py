@@ -200,7 +200,7 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
                 if i % verbose == 0:
                     print('Batch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
                         i, epoch_loss, epoch_acc, (time.time() - start_) / (i + 1)))
-            if params.wandb is not None:
+            if params.wandb:
                 wandb.log({'loss':epoch_loss,'accuracy':epoch_acc})
 
         epoch_losses.append(epoch_loss)
@@ -230,14 +230,14 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
                 print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
                       ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu,
                                                   time.time() - start_))
-            if params.wandb is not None:
+            if params.wandb:
                 wandb.log({'loss' : epoch_loss, 'accuracy':epoch_acc, 'val_loss':val_epoch_loss,
                     'val_accuracy':val_epoch_acc, 'val_bleu':val_bleu})
         else:
             if verbose is not None:
                 print('Epoch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
                     epoch, epoch_loss, epoch_acc, time.time() - start_))
-            if params.wandb is not None:
+            if params.wandb:
                 wandb.log({'loss' : epoch_loss, 'accuracy':epoch_acc, 'val_loss':val_epoch_loss,
                     'val_accuracy':val_epoch_acc, 'val_bleu':val_bleu})
 
@@ -249,14 +249,12 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
     return epoch_losses, epoch_accs, val_epoch_losses, val_epoch_accs
 
 
-
-
 def main(params):
     """ Loads the dataset and trains the model."""
 
-    if params.wandb is not None:
-        wandb.init(project='nlp-mnmt-project', entity=params.wandb,
-        config = {k:v for k,v in cfg.__dict__.items() if isinstance(v, (float, int, str))})
+    if params.wandb:
+        wandb.init(project='mnmt', entity='nlp-mnmt-project', 
+            config = {k:v for k,v in cfg.__dict__.items() if isinstance(v, (float, int, str))})
         config = wandb.config
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

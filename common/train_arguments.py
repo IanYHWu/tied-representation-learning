@@ -99,7 +99,7 @@ train_parser.add_argument(
     help='Frequency to print batch results.'
 )
 train_parser.add_argument(
-    '--wandb', default=None, type=str,
-    help='Should be passed as the wandb entity for recording.'
+    '--wandb', action='store_true',
+    help='Record the run in weights and biases.'
 )
 
