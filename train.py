@@ -4,6 +4,7 @@ Training Loop for MNMT
 
 import torch
 import time
+import wandb
 
 import models.base_transformer as base_transformer
 import models.initialiser as initialiser
@@ -153,6 +154,8 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
         _aux_criterion = torch.nn.CosineEmbeddingLoss(reduction='mean')
         _target = torch.tensor(1.0)
         aux_criterion = lambda x, y: params.aux_strength * _aux_criterion(x, y, _target)
+    if params.wandb is not None:
+        wandb.watch(model)
 
     epoch = 0
     if params.checkpoint:
@@ -196,6 +199,8 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
                 if i % verbose == 0:
                     print('Batch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
                         i, epoch_loss, epoch_acc, (time.time() - start_) / (i + 1)))
+            if params.wandb is not None:
+                wandb.log({'loss':epoch_loss,'accuracy':epoch_acc})
 
         epoch_losses.append(epoch_loss)
         epoch_accs.append(epoch_acc)
@@ -224,10 +229,16 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
                 print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
                       ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu,
                                                   time.time() - start_))
+            if params.wandb is not None:
+                wandb.log({'loss' : epoch_loss, 'accuracy':epoch_acc, 'val_loss':val_epoch_loss,
+                    'val_accuracy':val_epoch_acc, 'val_bleu':val_bleu})
         else:
             if verbose is not None:
                 print('Epoch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
                     epoch, epoch_loss, epoch_acc, time.time() - start_))
+            if params.wandb is not None:
+                wandb.log({'loss' : epoch_loss, 'accuracy':epoch_acc, 'val_loss':val_epoch_loss,
+                    'val_accuracy':val_epoch_acc, 'val_bleu':val_bleu})
 
         epoch += 1
 
@@ -241,6 +252,11 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
 
 def main(params):
     """ Loads the dataset and trains the model."""
+
+    if params.wandb is not None:
+        wandb.init(project='nlp-mnmt-project', entity=params.wandb,
+        config = {k:v for k,v in cfg.__dict__.items() if isinstance(v, (float, int, str))})
+        config = wandb.config
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger = setup(params)

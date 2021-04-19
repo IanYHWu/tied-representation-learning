@@ -98,4 +98,8 @@ train_parser.add_argument(
     '--verbose', default=50, type=int,
     help='Frequency to print batch results.'
 )
+train_parser.add_argument(
+    '--wandb', default=None, type=str,
+    help='Should be passed as the wandb entity for recording.'
+)
 
