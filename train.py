@@ -254,7 +254,7 @@ def main(params):
 
     if params.wandb:
         wandb.init(project='mnmt', entity='nlp-mnmt-project', 
-            config = {k:v for k,v in cfg.__dict__.items() if isinstance(v, (float, int, str))})
+            config = {k:v for k,v in params.__dict__.items() if isinstance(v, (float, int, str))})
         config = wandb.config
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
