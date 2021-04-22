@@ -82,4 +82,24 @@ train_parser.add_argument(
     '--add_epochs', default=0, type=int,
     help='Add epochs to train. Used for checkpointing'
 )
+train_parser.add_argument(
+    '--auxiliary', action='store_true',
+    help="Use auxiliary loss on encoder output."
+)
+train_parser.add_argument(
+    '--frozen_layers', nargs='+', default=[],
+    type=int, help='Encoder layers frozen for grad wrt aux loss.'
+)
+train_parser.add_argument(
+    '--aux_strength', default=1.0, type=float,
+    help='Strength of auxiliary loss relative to main loss.'
+)
+train_parser.add_argument(
+    '--verbose', default=50, type=int,
+    help='Frequency to print batch results.'
+)
+train_parser.add_argument(
+    '--wandb', action='store_true',
+    help='Record the run in weights and biases.'
+)
 

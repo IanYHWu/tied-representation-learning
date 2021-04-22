@@ -15,6 +15,24 @@ def loss_fn(y_pred, y_true, criterion):
     return (_loss * _mask).sum() / _mask.sum()
 
 
+def auxiliary_loss_fn(x_enc, y_enc, criterion, x_mask=None, y_mask=None):
+    """Computes loss according to criterion by masking and max pooling x_enc and y_enc."""
+
+    # scale masks and reshape to (batch, seq_len, 1)
+    if x_mask is not None:
+        x_mask = -9999.0 * x_mask.reshape(x_mask.size(0), -1, 1)
+        x_enc += x_mask
+    if y_mask is not None:
+        y_mask = -9999.0 * y_mask.reshape(y_mask.size(0), -1, 1)
+        y_enc += y_mask
+
+    # max pooling (batch, emb_dim)
+    x_enc = torch.max(x_enc, dim=1)[0]
+    y_enc = torch.max(y_enc, dim=1)[0]
+
+    return criterion(x_enc, y_enc)
+
+
 def accuracy_fn(y_pred, y_true):
     """ masked accuracy function """
     _mask = torch.logical_not(y_true == 0).float()

@@ -4,6 +4,7 @@ Training Loop for MNMT
 
 import torch
 import time
+import wandb
 
 import models.base_transformer as base_transformer
 import models.initialiser as initialiser
@@ -13,7 +14,7 @@ from common import data_logger as logging
 from hyperparams.loader import Loader
 from hyperparams.schedule import WarmupDecay
 from common.metrics import BLEU
-from common.utils import to_devices, accuracy_fn, loss_fn, sample_direction
+from common.utils import to_devices, accuracy_fn, loss_fn, auxiliary_loss_fn, sample_direction
 
 
 def train_step(x, y, model, criterion, optimizer, scheduler, device):
@@ -39,6 +40,58 @@ def train_step(x, y, model, criterion, optimizer, scheduler, device):
 
     # metrics
     batch_loss = loss.cpu().item()
+    batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
+
+    return batch_loss, batch_acc
+
+
+def param_freeze(model, frozen_layers, unfreeze=False):
+    """freeze parameters of encoder layers for any layer in frozen_layers."""
+    for i, layer in enumerate(model.encoder.enc_layers):
+        if i in frozen_layers:
+            for param in layer.parameters():
+                param.requires_grad = unfreeze
+    return model
+
+
+def aux_train_step(x, y, model, criterion, aux_criterion, frozen_layers, optimizer, scheduler, device):
+    """ Single training step using an auxiliary loss on the encoder outputs."""
+
+    # get masks and targets
+    y_inp, y_tar = y[:, :-1], y[:, 1:]
+    enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
+
+    # mask for the target language encoded representation.
+    enc_mask_aux = base_transformer.create_mask(y_inp)
+
+    # devices
+    x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux = to_devices(
+        (x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux),
+        device)
+
+    model.train()
+    optimizer.zero_grad()
+
+    x_enc = model.encoder(x, enc_mask)
+    y_pred = model.final_layer(model.decoder(y_inp, x_enc, look_ahead_mask, dec_mask)[0])
+    y_enc = model.encoder(y_inp, enc_mask_aux)
+
+    # main loss.
+    loss_main = loss_fn(y_pred.permute(0, 2, 1), y_tar, criterion)
+    loss_main.backward(retain_graph=True)
+
+    # aux loss
+    model = param_freeze(model, frozen_layers)
+    loss_aux = auxiliary_loss_fn(x_enc, y_enc, aux_criterion, x_mask=enc_mask, y_mask=enc_mask_aux)
+    loss_aux.backward()
+
+    optimizer.step()
+    scheduler.step()
+    model = param_freeze(model, frozen_layers, unfreeze=True)
+
+    # metrics
+    loss = loss_main + loss_aux
+    batch_loss = loss.detach().cpu().item()
     batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
 
     return batch_loss, batch_acc
@@ -85,7 +138,7 @@ def setup(params):
     logger.save_params()
     return logger
 
-def train(device, logger, params, train_dataloader, val_dataloader=None, tokenizer=None):
+def train(device, logger, params, train_dataloader, val_dataloader=None, tokenizer=None, verbose=50):
     """Training Loop"""
 
     multi = False
@@ -98,6 +151,13 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
     optimizer = torch.optim.Adam(model.parameters())
     scheduler = WarmupDecay(optimizer, params.warmup_steps, params.d_model, lr_scale=params.lr_scale)
     criterion = torch.nn.CrossEntropyLoss(reduction='none')
+    if params.auxiliary:
+        _aux_criterion = torch.nn.CosineEmbeddingLoss(reduction='mean')
+        _target = torch.tensor(1.0)
+        aux_criterion = lambda x, y: params.aux_strength * _aux_criterion(x, y, _target)
+    if params.wandb is not None:
+        wandb.watch(model)
+
     epoch = 0
     if params.checkpoint:
         model, optimizer, epoch = logging.load_checkpoint(logger.checkpoint_path, model, optimizer)
@@ -124,7 +184,11 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
             else:
                 x, y = data
 
-            batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, scheduler, device)
+            if params.auxiliary:
+                batch_loss, batch_acc = aux_train_step(x, y, model, criterion, aux_criterion,
+                    params.frozen_layers, optimizer, scheduler, device)
+            else:
+                batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, scheduler, device)
 
             batch_losses.append(batch_loss)
             batch_accs.append(batch_acc)
@@ -132,9 +196,12 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
             epoch_loss += (batch_loss - epoch_loss) / (i + 1)
             epoch_acc += (batch_acc - epoch_acc) / (i + 1)
 
-            if i % 50 == 0:
-                print('Batch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
-                    i, epoch_loss, epoch_acc, (time.time() - start_) / (i + 1)))
+            if verbose is not None:
+                if i % verbose == 0:
+                    print('Batch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
+                        i, epoch_loss, epoch_acc, (time.time() - start_) / (i + 1)))
+            if params.wandb:
+                wandb.log({'loss':epoch_loss,'accuracy':epoch_acc})
 
         epoch_losses.append(epoch_loss)
         epoch_accs.append(epoch_acc)
@@ -159,12 +226,20 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
             val_epoch_accs.append(val_epoch_acc)
             val_bleu = bleu.get_metric()
 
-            print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
-                  ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu,
-                                              time.time() - start_))
+            if verbose is not None:
+                print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
+                      ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu,
+                                                  time.time() - start_))
+            if params.wandb:
+                wandb.log({'loss' : epoch_loss, 'accuracy':epoch_acc, 'val_loss':val_epoch_loss,
+                    'val_accuracy':val_epoch_acc, 'val_bleu':val_bleu})
         else:
-            print('Epoch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
-                epoch, epoch_loss, epoch_acc, time.time() - start_))
+            if verbose is not None:
+                print('Epoch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
+                    epoch, epoch_loss, epoch_acc, time.time() - start_))
+            if params.wandb:
+                wandb.log({'loss' : epoch_loss, 'accuracy':epoch_acc, 'val_loss':val_epoch_loss,
+                    'val_accuracy':val_epoch_acc, 'val_bleu':val_bleu})
 
         epoch += 1
 
@@ -174,10 +249,13 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
     return epoch_losses, epoch_accs, val_epoch_losses, val_epoch_accs
 
 
-
-
 def main(params):
     """ Loads the dataset and trains the model."""
+
+    if params.wandb:
+        wandb.init(project='mnmt', entity='nlp-mnmt-project', 
+            config = {k:v for k,v in params.__dict__.items() if isinstance(v, (float, int, str))})
+        config = wandb.config
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger = setup(params)
@@ -188,14 +266,15 @@ def main(params):
         train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False, path=logger.root_path)
 
-        train(device, logger, params, train_dataloader, val_dataloader=val_dataloader)
+        train(device, logger, params, train_dataloader, val_dataloader=val_dataloader, verbose=params.verbose)
     else:
         # multilingual translation
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path)
 
-        train(device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer)
+        train(device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
+            verbose=params.verbose)
 
 
 if __name__ == "__main__":
