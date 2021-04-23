@@ -5,6 +5,7 @@ Training Loop for MNMT
 import torch
 import time
 import wandb
+from tokenizers import Tokenizer
 
 import models.base_transformer as base_transformer
 import models.initialiser as initialiser
@@ -14,7 +15,7 @@ from common import data_logger as logging
 from hyperparams.loader import Loader
 from hyperparams.schedule import WarmupDecay
 from common.metrics import BLEU
-from common.utils import to_devices, accuracy_fn, loss_fn, auxiliary_loss_fn, sample_direction
+from common.utils import to_devices, accuracy_fn, loss_fn, auxiliary_loss_fn, sample_direction, get_direction
 
 
 def train_step(x, y, model, criterion, optimizer, scheduler, device):
@@ -121,6 +122,7 @@ def val_step(x, y, model, criterion, bleu, device):
 
     return batch_loss, batch_acc
 
+
 def setup(params):
     new_root_path = params.location
     new_name = params.name
@@ -138,11 +140,17 @@ def setup(params):
     logger.save_params()
     return logger
 
-def train(device, logger, params, train_dataloader, val_dataloader=None, tokenizer=None, verbose=50):
-    """Training Loop"""
+
+def train(device, logger, params, train_dataloader, val_dataloader=None, tokenizer=None, verbose=50, pivot=False,
+          pivot_pair_ind=(0, 1)):
+    """Training Loop
+    For training a bilingual model as part of a pivot:
+        use pivot=True, and multilingual dataloaders.
+        specify the pivot pair in pivot_pair_ind
+    """
 
     multi = False
-    if len(params.langs) > 2:
+    if len(params.langs) > 2 and not pivot:
         assert tokenizer is not None
         multi = True
         add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
@@ -155,7 +163,7 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
         _aux_criterion = torch.nn.CosineEmbeddingLoss(reduction='mean')
         _target = torch.tensor(1.0)
         aux_criterion = lambda x, y: params.aux_strength * _aux_criterion(x, y, _target)
-    if params.wandb is not None:
+    if params.wandb:
         wandb.watch(model)
 
     epoch = 0
@@ -181,12 +189,14 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
                 # sample a tranlsation direction and add target tokens
                 (x, y), (x_lang, y_lang) = sample_direction(data, params.langs)
                 x = add_targets(x, y_lang)
+            elif pivot:
+                x, y = get_direction(data, pivot_pair_ind[0], pivot_pair_ind[1])
             else:
                 x, y = data
 
             if params.auxiliary:
                 batch_loss, batch_acc = aux_train_step(x, y, model, criterion, aux_criterion,
-                    params.frozen_layers, optimizer, scheduler, device)
+                                                       params.frozen_layers, optimizer, scheduler, device)
             else:
                 batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, scheduler, device)
 
@@ -201,7 +211,7 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
                     print('Batch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
                         i, epoch_loss, epoch_acc, (time.time() - start_) / (i + 1)))
             if params.wandb:
-                wandb.log({'loss':epoch_loss,'accuracy':epoch_acc})
+                wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc})
 
         epoch_losses.append(epoch_loss)
         epoch_accs.append(epoch_acc)
@@ -215,6 +225,8 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
                     # sample a tranlsation direction and add target tokens
                     (x, y), (x_lang, y_lang) = sample_direction(data, params.langs)
                     x = add_targets(x, y_lang)
+                elif pivot:
+                    x, y = get_direction(data, pivot_pair_ind[0], pivot_pair_ind[1])
                 else:
                     x, y = data
 
@@ -231,15 +243,15 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
                       ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu,
                                                   time.time() - start_))
             if params.wandb:
-                wandb.log({'loss' : epoch_loss, 'accuracy':epoch_acc, 'val_loss':val_epoch_loss,
-                    'val_accuracy':val_epoch_acc, 'val_bleu':val_bleu})
+                wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
+                           'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu})
         else:
             if verbose is not None:
                 print('Epoch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
                     epoch, epoch_loss, epoch_acc, time.time() - start_))
             if params.wandb:
-                wandb.log({'loss' : epoch_loss, 'accuracy':epoch_acc, 'val_loss':val_epoch_loss,
-                    'val_accuracy':val_epoch_acc, 'val_bleu':val_bleu})
+                wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
+                           'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu})
 
         epoch += 1
 
@@ -253,28 +265,45 @@ def main(params):
     """ Loads the dataset and trains the model."""
 
     if params.wandb:
-        wandb.init(project='mnmt', entity='nlp-mnmt-project', 
-            config = {k:v for k,v in params.__dict__.items() if isinstance(v, (float, int, str))})
+        wandb.init(project='mnmt', entity='nlp-mnmt-project',
+                   config={k: v for k, v in params.__dict__.items() if isinstance(v, (float, int, str))})
         config = wandb.config
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger = setup(params)
 
-    if len(params.langs) == 2:
+    if len(params.langs) == 2 and not params.pivot:
         # bilingual translation
 
         train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False, path=logger.root_path)
 
         train(device, logger, params, train_dataloader, val_dataloader=val_dataloader, verbose=params.verbose)
-    else:
+
+    elif len(params.langs) > 2 and not params.pivot:
         # multilingual translation
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path)
 
         train(device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
-            verbose=params.verbose)
+              verbose=params.verbose)
+
+    elif len(params.langs) > 2 and params.pivot:
+        if params.pivot_tokenizer_path:
+            tokenizer = Tokenizer.from_file(params.pivot_tokenizer_path)
+        else:
+            tokenizer = None
+
+        train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
+            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path,
+            tokenizer=tokenizer)
+
+        train(device, logger, params, test_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
+              verbose=params.verbose, pivot=True, pivot_pair_ind=params.pivot_inds)
+
+    else:
+        raise NotImplementedError
 
 
 if __name__ == "__main__":
