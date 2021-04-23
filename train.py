@@ -299,7 +299,7 @@ def main(params):
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path,
             tokenizer=tokenizer)
 
-        train(device, logger, params, test_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
+        train(device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
               verbose=params.verbose, pivot=True, pivot_pair_ind=params.pivot_inds)
 
     else:
