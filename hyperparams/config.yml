@@ -9,7 +9,7 @@ basic:
   d_model: 32
   max_pe: 1000
   dropout: 0.1
-  epochs: 10
+  epochs: 3
   warmup_steps: 4000
   lr_scale: 1.0
 
