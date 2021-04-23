@@ -7,6 +7,8 @@ import pandas as pd
 import torch
 import numpy as np
 import json
+from tokenizers import Tokenizer
+
 from hyperparams.loader import Loader
 from common.preprocess import detokenize
 from common.utils import mask_after_stop
@@ -73,6 +75,7 @@ class TestLogger:
         self.test_log_path = None
         self.checkpoint_path = None
         self.root_path = None
+        self.input_examples = []
         self.target_examples = []
         self.pred_examples = []
 
@@ -92,19 +95,22 @@ class TestLogger:
                           columns=["Langs", "Test Acc", "Test Bleu"])
         df.to_csv(self.test_log_path)
 
-    def log_examples(self, target_batch, prediction_batch, tokenizer):
+    def log_examples(self, input_batch, target_batch, prediction_batch, tokenizer):
         prediction_batch = mask_after_stop(prediction_batch, stop_token=2)
         if isinstance(tokenizer, list):
             tokenizer = tokenizer[1]
+        det_input = str(detokenize(input_batch, tokenizer)[0])
         det_target = str(detokenize(target_batch, tokenizer)[0])
         det_pred = str(detokenize(prediction_batch, tokenizer)[0])
 
         self.target_examples.append(det_target)
         self.pred_examples.append(det_pred)
+        self.input_examples.append(det_input)
 
     def dump_examples(self):
         with open(self.test_path + '/' + self.test_name + '_examples.txt', 'w') as f:
-            for pred, target in zip(self.pred_examples, self.target_examples):
+            for inp, pred, target in zip(self.input_examples, self.pred_examples, self.target_examples):
+                f.write("Input: {} \n \n".format(inp))
                 f.write("Target: {} \n \n".format(target))
                 f.write("Prediction: {} \n \n".format(pred))
                 f.write("---------------------------------- \n \n")
@@ -127,3 +133,6 @@ def load_checkpoint(path, device, model, optimizer=None):
         return model, optimizer, epoch
     else:
         return model
+
+
+
