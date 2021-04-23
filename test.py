@@ -15,6 +15,7 @@ from common.test_arguments import test_parser
 from hyperparams.loader import Loader
 from common.utils import to_devices, accuracy_fn, mask_after_stop, get_all_directions
 
+
 def greedy_search(x, y, y_tar, model, enc_mask=None):
     """Inference loop taking the most probable token at each step."""
     x_enc = model.encoder(x, enc_mask)
@@ -34,46 +35,45 @@ def greedy_search(x, y, y_tar, model, enc_mask=None):
 
     return torch.cat(y_pred, dim=1)
 
+
 def beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2):
     """Inference loop exploring the n most probable paths at each step."""
     x_enc = model.encoder(x, enc_mask).unsqueeze(1).repeat(1, beam_length, 1, 1)
     x_enc = x_enc.reshape(-1, x_enc.size(2), x_enc.size(3))
-    decode = lambda y : F.log_softmax(model.final_layer(model.decoder(y, x_enc, None, None)[0]), dim=-1)
+    decode = lambda y: F.log_softmax(model.final_layer(model.decoder(y, x_enc, None, None)[0]), dim=-1)
 
     # initial beams and probabilities
     y = y.unsqueeze(1).repeat(1, beam_length, 1)
-    log_p = torch.zeros(y.size(0), beam_length).to(y.device) # (batch, beam)
+    log_p = torch.zeros(y.size(0), beam_length).to(y.device)  #  (batch, beam)
 
     for t in range(y_tar.size(1)):
         with torch.no_grad():
-
             # expand beams
-            output = decode(y.reshape(-1, y.size(-1)))[:, -1, :] # (batch*beam, vocab_size)
-            new_log_p, new_tokens = torch.topk(output, beam_length, dim=-1) # (batch*beam, beam)
+            output = decode(y.reshape(-1, y.size(-1)))[:, -1, :]  # (batch*beam, vocab_size)
+            new_log_p, new_tokens = torch.topk(output, beam_length, dim=-1)  # (batch*beam, beam)
 
             # get probability of each beam and trim beams
             log_p = log_p.unsqueeze(-1) + new_log_p.reshape(-1, beam_length, beam_length)
             log_p, indices = torch.topk(log_p.reshape(-1, beam_length * beam_length), beam_length, dim=-1)
 
             # get the new tokens for each beam (batch, beam)
-            new_tokens = torch.gather(new_tokens.reshape(-1, beam_length*beam_length), 1, indices)
+            new_tokens = torch.gather(new_tokens.reshape(-1, beam_length * beam_length), 1, indices)
 
             # get the new beams
-            y_ = y.unsqueeze(2).repeat(1, 1, beam_length, 1).reshape(-1, beam_length*beam_length, y.size(-1))
-            new_y = torch.gather(y_, 1, indices.unsqueeze(-1).repeat(1, 1, y_.size(-1))) # (batch, beam, seq_len)
+            y_ = y.unsqueeze(2).repeat(1, 1, beam_length, 1).reshape(-1, beam_length * beam_length, y.size(-1))
+            new_y = torch.gather(y_, 1, indices.unsqueeze(-1).repeat(1, 1, y_.size(-1)))  # (batch, beam, seq_len)
 
-            y = torch.cat([new_y, new_tokens.unsqueeze(-1)], dim=-1) # (batch, beam, seq_len + 1)
+            y = torch.cat([new_y, new_tokens.unsqueeze(-1)], dim=-1)  # (batch, beam, seq_len + 1)
 
-    # get the beam with the highest log prob
-    best_beam = log_p.argmax(-1, keepdim=True) # (batch,)
-    y = torch.gather(y, 1, best_beam.unsqueeze(-1).repeat(1, 1, y.size(-1))) # (batch, tar_len+1)
+    #  get the beam with the highest log prob
+    best_beam = log_p.argmax(-1, keepdim=True)  #  (batch,)
+    y = torch.gather(y, 1, best_beam.unsqueeze(-1).repeat(1, 1, y.size(-1)))  #  (batch, tar_len+1)
 
-    return y[:, 0, 1:] # (batch, tar_len)
+    return y[:, 0, 1:]  # (batch, tar_len)
 
 
 def inference_step(x, y, model, logger, tokenizer, device, bleu=None,
-    teacher_forcing=False, pivot_mode=False, beam_length=1):
-
+                   teacher_forcing=False, pivot_mode=False, beam_length=1):
     """
     inference step.
     x: source language
@@ -97,10 +97,10 @@ def inference_step(x, y, model, logger, tokenizer, device, bleu=None,
         if not pivot_mode:
             batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
             bleu(torch.argmax(y_pred, axis=-1), y_tar)
-            logger.log_examples(y_tar, torch.argmax(y_pred, axis=-1), tokenizer)
+            logger.log_examples(x, y_tar, torch.argmax(y_pred, axis=-1), tokenizer)
             return batch_acc
         else:
-            return y_pred
+            return torch.argmax(y_pred, axis=-1)
 
     else:
         # Retrieve the start of sequence token and the target translation
@@ -123,13 +123,13 @@ def inference_step(x, y, model, logger, tokenizer, device, bleu=None,
             # batch_acc = accuracy_fn(y_pred, y_tar)
             if bleu is not None:
                 bleu(y_pred, y_tar)
-            logger.log_examples(y_tar, y_pred, tokenizer)
+            logger.log_examples(x, y_tar, y_pred, tokenizer)
             return batch_acc
         else:
-            return y_pred
+            return torch.argmax(y_pred, axis=-1)
 
 
-def test(device, params, test_dataloader, tokenizer):
+def test(device, params, test_dataloader, tokenizer, verbose=50):
     """Test loop"""
 
     logger = logging.TestLogger(params)
@@ -164,8 +164,8 @@ def test(device, params, test_dataloader, tokenizer):
             x, y = data
 
         test_batch_acc = inference_step(x, y, model, logger, tokenizer, device, bleu=bleu,
-                                                         teacher_forcing=params.teacher_forcing,
-                                                         beam_length=params.beam_length)
+                                        teacher_forcing=params.teacher_forcing,
+                                        beam_length=params.beam_length)
 
         test_batch_accs.append(test_batch_acc)
 
@@ -182,18 +182,18 @@ def test(device, params, test_dataloader, tokenizer):
     logger.dump_examples()
 
 
-def pivot_test(device, params, test_dataloader, tokenizers, verbose=50):
+def pivot_test(device, params, test_dataloader, tokenizer, verbose=50):
     logger = logging.TestLogger(params)
     logger.make_dirs()
     train_params = logging.load_params(params.location + '/' + params.name)
 
     model_1 = initialiser.initialise_model(train_params, device)
-    model_1 = logging.load_checkpoint(logger.checkpoint_path, device, model_1)
-    tokenizer_1 = tokenizers[0]
+    state_1 = torch.load(params.pivot_model_1, map_location=device)
+    model_1.load_state_dict(state_1['model_state_dict'])
 
     model_2 = initialiser.initialise_model(train_params, device)
-    model_2 = logging.load_checkpoint(logger.checkpoint_path, device, model_2)
-    tokenizer_2 = tokenizers[1]
+    state_2 = torch.load(params.pivot_model_2, map_location=device)
+    model_2.load_state_dict(state_2['model_state_dict'])
 
     test_batch_accs = []
     bleu = BLEU()
@@ -205,13 +205,13 @@ def pivot_test(device, params, test_dataloader, tokenizers, verbose=50):
     for i, data in enumerate(test_dataloader):
         x_1, y_1, y_2 = data[0], data[1], data[2]
 
-        y_pred_1 = inference_step(x_1, y_1, model_1, logger, tokenizer_1, device,
-                       teacher_forcing=params.teacher_forcing, pivot_mode=True)
+        y_pred_1 = inference_step(x_1, y_1, model_1, logger, tokenizer, device,
+                                  teacher_forcing=params.teacher_forcing, pivot_mode=True)
 
-        test_batch_acc = inference_step(y_pred_1, y_2, model_2, logger, tokenizer_2, device, bleu=bleu,
-                                                         teacher_forcing=params.teacher_forcing,
-                                                         beam_length=params.beam_length,
-                                                         pivot_mode=False)
+        test_batch_acc = inference_step(y_pred_1, y_2, model_2, logger, tokenizer, device, bleu=bleu,
+                                        teacher_forcing=params.teacher_forcing,
+                                        beam_length=params.beam_length,
+                                        pivot_mode=False)
 
         test_batch_accs.append(test_batch_acc)
 
@@ -224,6 +224,8 @@ def pivot_test(device, params, test_dataloader, tokenizers, verbose=50):
                     i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
 
     test_bleu = bleu.get_metric()
+    logger.log_results([params.langs, test_acc, test_bleu])
+    logger.dump_examples()
 
 
 def main(params):
@@ -233,9 +235,10 @@ def main(params):
 
     if len(params.langs) == 2:
         # bilingual translation
-
-        try: # check for existing tokenizers
-            tokenizers = [Tokenizer.from_file(params.location+'/'+lang+'_tokenizer.json') for lang in langs]
+        # check for existing tokenizers
+        try:
+            tokenizers = [Tokenizer.from_file(params.location + '/' + lang + '_tokenizer.json') for lang in
+                          params.langs]
         except:
             tokenizers = None
 
@@ -245,10 +248,10 @@ def main(params):
 
         test(device, params, test_dataloader, tokenizers, verbose=params.verbose)
 
-    else:
+    elif len(params.langs) > 2 and not params.pivot:
         # multilingual translation
-
-        try: # check for existing tokenizers
+        #  check for existing tokenizers
+        try:
             tokenizer = Tokenizer.from_file(params.location + '/multi_tokenizer.json')
         except:
             tokenizer = None
@@ -258,6 +261,18 @@ def main(params):
             tokenizer=tokenizer, multi=True)
 
         test(device, params, test_dataloader, tokenizer, verbose=params.verbose)
+
+    elif len(params.langs) > 2 and params.pivot:
+        try:
+            tokenizer = Tokenizer.from_file(params.pivot_tokenizer_path)
+        except:
+            tokenizer = None
+
+        train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
+            params.langs, params.batch_size, params.vocab_size, params.dataset,
+            tokenizer=tokenizer, multi=True)
+
+        pivot_test(device, params, test_dataloader, tokenizer, verbose=params.verbose)
 
 
 if __name__ == "__main__":
