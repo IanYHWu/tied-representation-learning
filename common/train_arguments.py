@@ -83,6 +83,19 @@ train_parser.add_argument(
     help='Add epochs to train. Used for checkpointing'
 )
 train_parser.add_argument(
+    '--pivot', action='store_true',
+    help='Train a bilingual model that is part of a pivot'
+)
+train_parser.add_argument(
+    '--pivot_inds', nargs='+', default=[0, 1],
+    type=int,
+    help='Pivot indices - e.g. if langs=[de, en, fr], then training the de -> en pivot will require pivot_inds=(0, 1)'
+)
+train_parser.add_argument(
+    '--pivot_tokenizer_path', default=None, type=str,
+    help='Path to multilingual tokeniser for pivot training'
+)
+train_parser.add_argument(
     '--auxiliary', action='store_true',
     help="Use auxiliary loss on encoder output."
 )
