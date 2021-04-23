@@ -50,6 +50,24 @@ test_parser.add_argument(
     '--verbose', default=50, type=int,
     help='Frequency to print batch results.'
 )
+test_parser.add_argument(
+    '--pivot', action='store_true',
+    help='Test a multilingual pivot model'
+)
+test_parser.add_argument(
+    '--pivot_tokenizer_path', default=None, type=str,
+    help='Path to multilingual tokeniser for pivot testing'
+)
+test_parser.add_argument(
+    '--pivot_model_1', default=None, type=str,
+    help='Path to pivot model 1'
+)
+test_parser.add_argument(
+    '--pivot_model_2', default=None, type=str,
+    help='Path to pivot model 2'
+)
+
+
 
 
 
