@@ -47,6 +47,12 @@ def sample_direction(data, langs):
     return (data[source], data[target]), (langs[source], langs[target])
 
 
+def get_direction(data, ind_source, ind_target):
+    """extract a translation direction from the dataloader -
+       deterministic version of sample_direction"""
+    return data[ind_source], data[ind_target]
+
+
 def get_all_directions(data, langs):
     """unpacks all translation pairs from a batch of translations. Takes
     a dict of batches of tensors and returns a tensor of first dim size
