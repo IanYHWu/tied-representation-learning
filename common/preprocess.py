@@ -145,6 +145,8 @@ def preprocess(dataset, langs, batch_size=32, tokenizers=None, vocab_size=None, 
         ex_langs = tuple(pad_sequence(x, batch_first=True) for x in ex_langs)
         return ex_langs
 
+    print("Dataset Size: {}".format(len(dataset[langs[0]])))
+
     dataloader = torch.utils.data.DataLoader(dataset,
                                              batch_size=batch_size,
                                              collate_fn=pad_seqs)
@@ -188,6 +190,8 @@ def preprocess_multi(dataset, langs, batch_size=32, tokenizer=None, vocab_size=N
         ex_langs = tuple(pad_sequence(x, batch_first=True, max_len=max_len) for x in ex_langs)
         return ex_langs
 
+    print("Dataset Size: {}".format(len(dataset[langs[0]])))
+
     dataloader = torch.utils.data.DataLoader(dataset,
                                              batch_size=batch_size,
                                              collate_fn=pad_seqs)
@@ -227,10 +231,11 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
         test_dataloader, _ = preprocess_multi(test_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len)
         
         # save tokenizers if trained
-        if (path is not None) and (save_tokenizer):
+        if (path is not None) and save_tokenizer:
             tokenizer.save(path + '/multi_tokenizer.json')
 
         return train_dataloader, val_dataloader, test_dataloader, tokenizer
+
     else:
         train_dataloader, tokenizers = preprocess(train_dataset, langs,
                                                   batch_size=batch_size,
@@ -240,7 +245,7 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
         val_dataloader, _ = preprocess(val_dataset, langs, batch_size=batch_size, tokenizers=tokenizers, max_len=max_len)
         test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size, tokenizers=tokenizers, max_len=max_len)
 
-        #save tokenizers
+        # save tokenizers
         if (path is not None) & (save_tokenizer):
             for tok, lang in zip(tokenizers, langs):
                 tok.save(path + '/' + lang + '_tokenizer.json')
