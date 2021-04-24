@@ -210,8 +210,8 @@ def multi_test(device, params, test_dataloader, tokenizer, verbose=50):
 
         # report the mean accuracy and bleu accross directions
         if verbose is not None:
-            test_acc += (np.mean([v[-1] for k,v in pair_accs]) - test_acc) / (i + 1)
-            curr_bleu = np.mean([bleu.get_metric() for _, bleu in pair_bleus])
+            test_acc += (np.mean([v[-1] for v in pair_accs.values()]) - test_acc) / (i + 1)
+            curr_bleu = np.mean([bleu.get_metric() for bleu in pair_bleus.values()])
             if i % verbose == 0:
                 print('Batch {} Accuracy {:.4f} Bleu {:.4f} in {:.4f} s per batch'.format(
                     i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
