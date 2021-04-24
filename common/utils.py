@@ -69,7 +69,7 @@ def get_directions(data, langs):
 
     batch_size = data[0].shape[0]
     out = {}
-    for s, t in pairs:
+    for s, t in get_pairs(langs):
         target_lang = batch_size * [t]
         x = torch.nn.utils.rnn.pad_sequence(data[langs.index(s)].t(), padding_value = 0)
         y = torch.nn.utils.rnn.pad_sequence(data[langs.index(t)].t(), padding_value = 0)
