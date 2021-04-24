@@ -183,9 +183,9 @@ def multi_test(device, params, test_dataloader, tokenizer, verbose=50):
 
     assert tokenizer is not None
     add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
-    pair_accs = {s+'-'+t : 0.0 for s, t in get_pairs(langs)}
+    pair_accs = {s+'-'+t : 0.0 for s, t in get_pairs(params.langs)}
     pair_bleus = {}
-    for s, t in get_pairs(langs):
+    for s, t in get_pairs(params.langs):
         _bleu = BLEU()
         _bleu.set_excluded_indices([0, 2])
         pair_bleus[s+'-'+t] = _bleu
