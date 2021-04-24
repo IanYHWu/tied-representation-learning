@@ -199,7 +199,7 @@ def multi_test(device, params, test_dataloader, tokenizer, verbose=50):
     for i, data in enumerate(test_dataloader):
 
         data = get_directions(data, params.langs)
-        for direction, (x, y, y_lang) in data:
+        for direction, (x, y, y_lang) in data.items():
             x = add_targets(x, y_lang)
             bleu = pair_bleus[direction]
             test_batch_acc = inference_step(x, y, model, logger, tokenizer, device, bleu=bleu,
