@@ -216,7 +216,7 @@ def multi_test(device, params, test_dataloader, tokenizer, verbose=50):
                 print('Batch {} Accuracy {:.4f} Bleu {:.4f} in {:.4f} s per batch'.format(
                     i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
 
-    directions = [d for d, _ in pair_bleus]
+    directions = [d for d in pair_bleus.keys()]
     test_accs = [pair_accs[d] for d in directions]
     test_bleus = [pair_bleus[d].get_metric() for d in directions]
     logger.log_results([directions, test_accs, test_bleus])
