@@ -4,6 +4,7 @@ Inference Loop for MNMT
 
 import torch
 import torch.nn.functional as F
+import numpy as np 
 import time
 from tokenizers import Tokenizer
 from models import base_transformer
