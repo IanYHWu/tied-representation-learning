@@ -94,7 +94,7 @@ class TestLogger:
         if columns is None:
             columns = ["direction", "test_acc", "test_bleu"]
         assert len(results) == len(columns)
-        results = [r for r in results if isinstance(r, list) else [r]]
+        results = [r if isinstance(r, list) else [r] for r in results]
         df = pd.DataFrame({c:r for c,r in zip(columns, results)})
         df.to_csv(self.test_log_path, index=False)
 
