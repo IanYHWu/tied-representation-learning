@@ -13,7 +13,7 @@ from common.metrics import BLEU
 from common import preprocess
 from common.test_arguments import test_parser
 from hyperparams.loader import Loader
-from common.utils import to_devices, accuracy_fn, mask_after_stop, get_all_directions
+from common.utils import to_devices, accuracy_fn, mask_after_stop, get_all_directions, get_pairs, get_directions
 
 
 def greedy_search(x, y, y_tar, model, enc_mask=None):
@@ -139,12 +139,6 @@ def test(device, params, test_dataloader, tokenizer, verbose=50):
     model = initialiser.initialise_model(train_params, device)
     model = logging.load_checkpoint(logger.checkpoint_path, device, model)
 
-    multi = False
-    if len(params.langs) > 2:
-        assert tokenizer is not None
-        multi = True
-        add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
-
     test_batch_accs = []
     bleu = BLEU()
     bleu.set_excluded_indices([0, 2])
@@ -157,16 +151,10 @@ def test(device, params, test_dataloader, tokenizer, verbose=50):
     print("Now testing")
     for i, data in enumerate(test_dataloader):
 
-        if multi:
-            x, y, y_lang = get_all_directions(data, params.langs)
-            x = add_targets(x, y_lang)
-        else:
-            x, y = data
-
+        x, y = data
         test_batch_acc = inference_step(x, y, model, logger, tokenizer, device, bleu=bleu,
                                         teacher_forcing=params.teacher_forcing,
                                         beam_length=params.beam_length)
-
         test_batch_accs.append(test_batch_acc)
 
         test_acc += (test_batch_acc - test_acc) / (i + 1)
@@ -178,7 +166,59 @@ def test(device, params, test_dataloader, tokenizer, verbose=50):
                     i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
 
     test_bleu = bleu.get_metric()
-    logger.log_results([params.langs, test_acc, test_bleu])
+    direction = params.langs[0] + '-' + params.langs[1]
+    logger.log_results([direction, test_acc, test_bleu])
+    logger.dump_examples()
+
+
+def multi_test(device, params, test_dataloader, tokenizer, verbose=50):
+    """Test for multilingual translation. Evaluates on all possible translation directions."""
+
+    logger = logging.TestLogger(params)
+    logger.make_dirs()
+    train_params = logging.load_params(params.location + '/' + params.name)
+
+    model = initialiser.initialise_model(train_params, device)
+    model = logging.load_checkpoint(logger.checkpoint_path, device, model)
+
+    assert tokenizer is not None
+    add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
+    pair_accs = {s+'-'+t : 0.0 for s, t in get_pairs(langs)}
+    pair_bleus = {}
+    for s, t in get_pairs(langs):
+        _bleu = BLEU()
+        _bleu.set_excluded_indices([0, 2])
+        pair_bleus[s+'-'+t] = _bleu
+
+    test_acc = 0.0
+    start_ = time.time()
+
+    print(params.__dict__)
+
+    print("Now testing")
+    for i, data in enumerate(test_dataloader):
+
+        data = get_directions(data, params.langs)
+        for direction, (x, y, y_lang) in data:
+            x = add_targets(x, y_lang)
+            bleu = pair_bleus[direction]
+            test_batch_acc = inference_step(x, y, model, logger, tokenizer, device, bleu=bleu,
+                                        teacher_forcing=params.teacher_forcing,
+                                        beam_length=params.beam_length)
+            pair_accs[direction] += (test_batch_acc - pair_accs[direction]) / (i + 1)
+
+        # report the mean accuracy and bleu accross directions
+        if verbose is not None:
+            test_acc += (np.mean([v[-1] for k,v in pair_accs]) - test_acc) / (i + 1)
+            curr_bleu = np.mean([bleu.get_metric() for _, bleu in pair_bleus])
+            if i % verbose == 0:
+                print('Batch {} Accuracy {:.4f} Bleu {:.4f} in {:.4f} s per batch'.format(
+                    i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
+
+    directions = [d for d, _ in pair_bleus]
+    test_accs = [pair_accs[d] for d in directions]
+    test_bleus = [pair_bleus[d].get_metric() for d in directions]
+    logger.log_results([directions, test_accs, test_bleus])
     logger.dump_examples()
 
 
@@ -224,7 +264,8 @@ def pivot_test(device, params, test_dataloader, tokenizer, verbose=50):
                     i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
 
     test_bleu = bleu.get_metric()
-    logger.log_results([params.langs, test_acc, test_bleu])
+    direction = params.langs[0] + '-' + params.langs[1] + '-' params.langs[2]
+    logger.log_results([direction, test_acc, test_bleu])
     logger.dump_examples()
 
 
@@ -260,7 +301,7 @@ def main(params):
             params.langs, params.batch_size, params.vocab_size, params.dataset,
             tokenizer=tokenizer, multi=True)
 
-        test(device, params, test_dataloader, tokenizer, verbose=params.verbose)
+        multi_test(device, params, test_dataloader, tokenizer, verbose=params.verbose)
 
     elif len(params.langs) > 2 and params.pivot:
         try:
