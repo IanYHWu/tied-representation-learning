@@ -264,7 +264,7 @@ def pivot_test(device, params, test_dataloader, tokenizer, verbose=50):
                     i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
 
     test_bleu = bleu.get_metric()
-    direction = params.langs[0] + '-' + params.langs[1] + '-' params.langs[2]
+    direction = params.langs[0] + '-' + params.langs[1] + '-' + params.langs[2]
     logger.log_results([direction, test_acc, test_bleu])
     logger.dump_examples()
 
