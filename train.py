@@ -1,9 +1,15 @@
 """
 Training Loop for MNMT
 """
+SEED = 11
 
 import torch
-import time
+import torch.nn as nn 
+import torch.multiprocessing as mp 
+import torch.distributed as dist 
+
+import numpy as np 
+import os, sys, time
 import wandb
 from tokenizers import Tokenizer
 
@@ -17,8 +23,12 @@ from hyperparams.schedule import WarmupDecay
 from common.metrics import BLEU
 from common.utils import to_devices, accuracy_fn, loss_fn, auxiliary_loss_fn, sample_direction, get_direction
 
+def seed_all(SEED):
+    """ Set the seed for all devices. """
+    torch.cuda.manual_seed_all(SEED)
+    np.random.seed(SEED)
 
-def train_step(x, y, model, criterion, optimizer, scheduler, device):
+def train_step(x, y, model, criterion, optimizer, scheduler, device, distributed=False):
     # get masks and targets
     y_inp, y_tar = y[:, :-1], y[:, 1:]
     enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
@@ -26,7 +36,7 @@ def train_step(x, y, model, criterion, optimizer, scheduler, device):
     # devices
     x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask = to_devices(
         (x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask),
-        device)
+        device, non_blocking=distributed)
 
     # forward
     model.train()
@@ -40,8 +50,8 @@ def train_step(x, y, model, criterion, optimizer, scheduler, device):
     scheduler.step()
 
     # metrics
-    batch_loss = loss.cpu().item()
-    batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
+    batch_loss = loss.detach()
+    batch_acc = accuracy_fn(y_pred.detach(), y_tar)
 
     return batch_loss, batch_acc
 
@@ -55,7 +65,8 @@ def param_freeze(model, frozen_layers, unfreeze=False):
     return model
 
 
-def aux_train_step(x, y, model, criterion, aux_criterion, frozen_layers, optimizer, scheduler, device):
+def aux_train_step(x, y, model, criterion, aux_criterion, frozen_layers,
+    optimizer, scheduler, device, distributed=False):
     """ Single training step using an auxiliary loss on the encoder outputs."""
 
     # get masks and targets
@@ -68,7 +79,7 @@ def aux_train_step(x, y, model, criterion, aux_criterion, frozen_layers, optimiz
     # devices
     x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux = to_devices(
         (x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux),
-        device)
+        device, non_blocking=distributed)
 
     model.train()
     optimizer.zero_grad()
@@ -92,8 +103,8 @@ def aux_train_step(x, y, model, criterion, aux_criterion, frozen_layers, optimiz
 
     # metrics
     loss = loss_main + loss_aux
-    batch_loss = loss.detach().cpu().item()
-    batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
+    batch_loss = loss.detach()
+    batch_acc = accuracy_fn(y_pred.detach(), y_tar)
 
     return batch_loss, batch_acc
 
@@ -106,7 +117,7 @@ def val_step(x, y, model, criterion, bleu, device):
     # devices
     x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask = to_devices(
         (x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask),
-        device)
+        device, non_blocking=distributed)
 
     # forward
     model.eval()
@@ -115,8 +126,8 @@ def val_step(x, y, model, criterion, bleu, device):
         loss = loss_fn(y_pred.permute(0, 2, 1), y_tar, criterion)
 
     # metrics
-    batch_loss = loss.item()
-    batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
+    batch_loss = loss.detach()
+    batch_acc = accuracy_fn(y_pred.detach(), y_tar)
 
     bleu(torch.argmax(y_pred, axis=-1), y_tar)
 
@@ -141,8 +152,8 @@ def setup(params):
     return logger
 
 
-def train(device, logger, params, train_dataloader, val_dataloader=None, tokenizer=None, verbose=50, pivot=False,
-          pivot_pair_ind=(0, 1)):
+def train(rank, device, logger, params, train_dataloader, val_dataloader=None, tokenizer=None,
+    verbose=50, pivot=False, pivot_pair_ind=(0, 1)):
     """Training Loop
     For training a bilingual model as part of a pivot:
         use pivot=True, and multilingual dataloaders.
@@ -163,16 +174,19 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
         _aux_criterion = torch.nn.CosineEmbeddingLoss(reduction='mean')
         _target = torch.tensor(1.0)
         aux_criterion = lambda x, y: params.aux_strength * _aux_criterion(x, y, _target)
-    if params.wandb:
-        wandb.watch(model)
-
+    
     epoch = 0
     if params.checkpoint:
         model, optimizer, epoch = logging.load_checkpoint(logger.checkpoint_path, model, optimizer)
 
-    batch_losses, batch_accs = [], []
-    epoch_losses, epoch_accs = [], []
-    val_epoch_losses, val_epoch_accs, val_epoch_bleus = [], [], []
+    model = nn.parallel.DistributedDataParallel(model, device_ids=[device.index])
+
+    if rank == 0 and params.wandb:
+        if params.wandb:
+            wandb.watch(model)
+        batch_losses, batch_accs = [], []
+        epoch_losses, epoch_accs = [], []
+        val_epoch_losses, val_epoch_accs, val_epoch_bleus = [], [], []
 
     while epoch < params.epochs:
         start_ = time.time()
@@ -200,96 +214,112 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
             else:
                 batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, scheduler, device)
 
-            batch_losses.append(batch_loss)
-            batch_accs.append(batch_acc)
+            if rank == 0:
+                batch_loss = batch_loss.item()
+                batch_acc = batch_acc.item()
+                batch_losses.append(batch_loss)
+                batch_accs.append(batch_acc)
+                epoch_loss += (batch_loss - epoch_loss) / (i + 1)
+                epoch_acc += (batch_acc - epoch_acc) / (i + 1)
 
-            epoch_loss += (batch_loss - epoch_loss) / (i + 1)
-            epoch_acc += (batch_acc - epoch_acc) / (i + 1)
+                if verbose is not None:
+                    if i % verbose == 0:
+                        print('Batch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
+                            i, epoch_loss, epoch_acc, (time.time() - start_) / (i + 1)))
+                if params.wandb:
+                    wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc})
 
-            if verbose is not None:
-                if i % verbose == 0:
-                    print('Batch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
-                        i, epoch_loss, epoch_acc, (time.time() - start_) / (i + 1)))
-            if params.wandb:
-                wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc})
+        if rank == 0:
+            epoch_losses.append(epoch_loss)
+            epoch_accs.append(epoch_acc)
 
-        epoch_losses.append(epoch_loss)
-        epoch_accs.append(epoch_acc)
+        # val only on rank 0
+        if rank == 0:
+            if val_dataloader is not None:
+                bleu = BLEU()
+                bleu.set_excluded_indices([0, 2])
+                for i, data in enumerate(val_dataloader):
+                    if multi:
+                        # sample a tranlsation direction and add target tokens
+                        (x, y), (x_lang, y_lang) = sample_direction(data, params.langs)
+                        x = add_targets(x, y_lang)
+                    elif pivot:
+                        x, y = get_direction(data, pivot_pair_ind[0], pivot_pair_ind[1])
+                    else:
+                        x, y = data
 
-        # val
-        if val_dataloader is not None:
-            bleu = BLEU()
-            bleu.set_excluded_indices([0, 2])
-            for i, data in enumerate(val_dataloader):
-                if multi:
-                    # sample a tranlsation direction and add target tokens
-                    (x, y), (x_lang, y_lang) = sample_direction(data, params.langs)
-                    x = add_targets(x, y_lang)
-                elif pivot:
-                    x, y = get_direction(data, pivot_pair_ind[0], pivot_pair_ind[1])
-                else:
-                    x, y = data
+                    batch_loss, batch_acc = val_step(x, y, model, criterion, bleu, device)
+                    val_epoch_loss += (batch_loss - val_epoch_loss) / (i + 1)
+                    val_epoch_acc += (batch_acc - val_epoch_acc) / (i + 1)
 
-                batch_loss, batch_acc = val_step(x, y, model, criterion, bleu, device)
-                val_epoch_loss += (batch_loss - val_epoch_loss) / (i + 1)
-                val_epoch_acc += (batch_acc - val_epoch_acc) / (i + 1)
+                val_epoch_losses.append(val_epoch_loss)
+                val_epoch_accs.append(val_epoch_acc)
+                val_bleu = bleu.get_metric()
 
-            val_epoch_losses.append(val_epoch_loss)
-            val_epoch_accs.append(val_epoch_acc)
-            val_bleu = bleu.get_metric()
-
-            if verbose is not None:
-                print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
-                      ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu,
-                                                  time.time() - start_))
-            if params.wandb:
-                wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
-                           'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu})
-        else:
-            if verbose is not None:
-                print('Epoch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
-                    epoch, epoch_loss, epoch_acc, time.time() - start_))
-            if params.wandb:
-                wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
-                           'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu})
+                if verbose is not None:
+                    print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
+                          ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu,
+                                                      time.time() - start_))
+                if params.wandb:
+                    wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
+                               'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu})
+            else:
+                if verbose is not None:
+                    print('Epoch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
+                        epoch, epoch_loss, epoch_acc, time.time() - start_))
+                if params.wandb:
+                    wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
+                               'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu})
 
         epoch += 1
 
-        logger.save_model(epoch, model, optimizer)
-        logger.log_results([epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu])
+        if rank == 0:
+            logger.save_model(epoch, model, optimizer)
+            logger.log_results([epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu])
 
     return epoch_losses, epoch_accs, val_epoch_losses, val_epoch_accs
 
 
-def main(params):
+def main(gpu, params):
     """ Loads the dataset and trains the model."""
+    rank = args.nr * args.gpus + gpu
+    if params.distributed:
+        dist.init_process_group(backend='nccl', init_method='env://', world_size=args.world_size, rank=rank)
+    seed_all(SEED)
 
-    if params.wandb:
+    # get gpu device
+    device = torch.device(gpu)
+
+    # only wandb on main process
+    if rank == 0 and params.wandb:
         wandb.init(project='mnmt', entity='nlp-mnmt-project',
                    config={k: v for k, v in params.__dict__.items() if isinstance(v, (float, int, str))})
         config = wandb.config
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger = setup(params)
 
+    # load data and train for required experiment
     if len(params.langs) == 2 and not params.pivot:
         # bilingual translation
 
         train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
-            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False, path=logger.root_path)
+            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False, path=logger.root_path,
+            distributed=params.distributed, world_size=params.world_size, rank=params.rank)
 
-        train(device, logger, params, train_dataloader, val_dataloader=val_dataloader, verbose=params.verbose)
+        train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, verbose=params.verbose)
 
     elif len(params.langs) > 2 and not params.pivot:
         # multilingual translation
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
-            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path)
+            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path,
+            distributed=params.distributed, world_size=params.world_size, rank=params.rank)
 
-        train(device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
+        train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
               verbose=params.verbose)
 
     elif len(params.langs) > 2 and params.pivot:
+        # pivot translation
+
         if params.pivot_tokenizer_path:
             tokenizer = Tokenizer.from_file(params.pivot_tokenizer_path)
         else:
@@ -297,18 +327,36 @@ def main(params):
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path,
-            tokenizer=tokenizer)
+            distributed=params.distributed, world_size=params.world_size, rank=params.rank, tokenizer=tokenizer)
 
-        train(device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
+        train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
               verbose=params.verbose, pivot=True, pivot_pair_ind=params.pivot_inds)
 
     else:
         raise NotImplementedError
 
+    # end wanb process to avoid hanging
+    if rank == 0 and params.wandb:
+        wandb.finish()
+
+def run_distributed(params):
+    params.world_size = params.gpus * params.nodes
+    try:
+        os.environ['MASTER_ADDR']
+        os.environ['MASTER_PORT']
+    except KeyError:
+        print('Missing environment variable.')
+        sys.exit(1)
+    mp.spawn(main, nprocs=params.gpus, args=(params,))
 
 if __name__ == "__main__":
+
+    exit()
     args = train_parser.parse_args()
 
     # Loader can also take in any dictionary of parameters
     params = Loader(args, check_custom=True)
-    main(params)
+    if params.distributed:
+        run_distributed(params)
+    else:
+        main(0, params)
