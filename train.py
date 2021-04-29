@@ -172,16 +172,17 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
     criterion = torch.nn.CrossEntropyLoss(reduction='none')
     if params.auxiliary:
         _aux_criterion = torch.nn.CosineEmbeddingLoss(reduction='mean')
-        _target = torch.tensor(1.0)
+        _target = torch.tensor(1.0).to(device)
         aux_criterion = lambda x, y: params.aux_strength * _aux_criterion(x, y, _target)
     
     epoch = 0
     if params.checkpoint:
         model, optimizer, epoch = logging.load_checkpoint(logger.checkpoint_path, model, optimizer)
+    
+    if params.distributed:
+        model = nn.parallel.DistributedDataParallel(model, device_ids=[device.index])
 
-    model = nn.parallel.DistributedDataParallel(model, device_ids=[device.index])
-
-    if rank == 0 and params.wandb:
+    if rank == 0:
         if params.wandb:
             wandb.watch(model)
         batch_losses, batch_accs = [], []
@@ -303,7 +304,7 @@ def main(gpu, params):
 
         train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False, path=logger.root_path,
-            distributed=params.distributed, world_size=params.world_size, rank=params.rank)
+            distributed=params.distributed, world_size=params.world_size, rank=rank)
 
         train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, verbose=params.verbose)
 
@@ -312,7 +313,7 @@ def main(gpu, params):
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path,
-            distributed=params.distributed, world_size=params.world_size, rank=params.rank)
+            distributed=params.distributed, world_size=params.world_size, rank=rank)
 
         train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
               verbose=params.verbose)
@@ -327,7 +328,7 @@ def main(gpu, params):
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path,
-            distributed=params.distributed, world_size=params.world_size, rank=params.rank, tokenizer=tokenizer)
+            distributed=params.distributed, world_size=params.world_size, rank=rank, tokenizer=tokenizer)
 
         train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
               verbose=params.verbose, pivot=True, pivot_pair_ind=params.pivot_inds)
@@ -351,7 +352,6 @@ def run_distributed(params):
 
 if __name__ == "__main__":
 
-    exit()
     args = train_parser.parse_args()
 
     # Loader can also take in any dictionary of parameters
@@ -359,4 +359,5 @@ if __name__ == "__main__":
     if params.distributed:
         run_distributed(params)
     else:
+        params.world_size = params.gpus * params.nodes
         main(0, params)

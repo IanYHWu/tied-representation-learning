@@ -1,9 +1,12 @@
 """
-Pipeline for loading the TED-Multilingual dataset via HuggingFace,
-training BPE tokenizers for given languages and creating a torch dataloader.
+Pipeline for loading translation dataset via HuggingFace, training BPE
+tokenizers for given languages and creating a torch dataloader.
 
 If doing multi-lingual translation then a single, shared tokenizer is trained 
 however for bilingual translation individual tokenizers are used.
+
+For a dataset to be loadable it needs a filter_languages function which will
+extract the required translations from each example.
 """
 
 import torch
@@ -108,7 +111,7 @@ def pad_sequence(sequences, batch_first=False, padding_value=0.0, max_len = None
     return out_tensor
 
 
-def preprocess(dataset, langs, batch_size=32, tokenizers=None, vocab_size=None, max_len=None,
+def preprocess(dataset, langs, batch_size=32, tokenizer=None, vocab_size=None, max_len=None,
     multi=False, distributed=False, world_size=None, rank=None):
     """
     Applies full preprocessing to dataset: filtering, tokenization,
@@ -181,7 +184,7 @@ def preprocess(dataset, langs, batch_size=32, tokenizers=None, vocab_size=None, 
                                                  collate_fn=pad_seqs)
 
 
-    return dataloader, tokenizers
+    return dataloader, tokenizer
 
 
 def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,

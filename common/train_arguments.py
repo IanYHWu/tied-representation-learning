@@ -52,7 +52,7 @@ train_parser.add_argument(
     help='Distribute training over multiple gpus (if available)'
 )
 train_parser.add_argument(
-    '--n', default=1, type=int,
+    '--nodes', default=1, type=int,
     help='Number of data loading workers.'
 )
 train_parser.add_argument(
@@ -60,7 +60,7 @@ train_parser.add_argument(
     help='Ranking within the nodes.'
 )
 train_parser.add_argument(
-    '--g', default=1, type=int,
+    '--gpus', default=1, type=int,
     help='Number of gpus per node.'
 )
 
