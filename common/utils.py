@@ -53,14 +53,37 @@ def get_direction(data, ind_source, ind_target):
     return data[ind_source], data[ind_target]
 
 
+def get_pairs(inp_list):
+    """get all ordered pairs of given list"""
+    pairs = list(combinations(inp_list, 2))
+    pairs.extend([(y,x) for x,y in pairs])
+    return pairs
+
+
+def get_directions(data, langs):
+    """unpacks all translation pairs from a batch of translations. Takes
+    a dict of batches of tensors and returns a dict of tensors for each
+    language direction."""
+
+    source, target = list(zip(*get_pairs(langs)))
+
+    batch_size = data[0].shape[0]
+    out = {}
+    for s, t in get_pairs(langs):
+        target_lang = batch_size * [t]
+        x = torch.nn.utils.rnn.pad_sequence(data[langs.index(s)].t(), padding_value = 0)
+        y = torch.nn.utils.rnn.pad_sequence(data[langs.index(t)].t(), padding_value = 0)
+        out[s+'-'+t] = (x, y, target_lang)
+
+    return out
+
+
 def get_all_directions(data, langs):
     """unpacks all translation pairs from a batch of translations. Takes
     a dict of batches of tensors and returns a tensor of first dim size
     batch_size * len(langs) * (len(langs) - 1)."""
 
-    pairs = list(combinations(langs, 2))
-    pairs.extend([(y,x) for x,y in pairs])
-    source, target = list(zip(*pairs))
+    source, target = list(zip(*get_pairs(langs)))
 
     batch_size = data[0].shape[0]
     full_targets = []

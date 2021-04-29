@@ -90,10 +90,13 @@ class TestLogger:
         self.test_log_path = test_path + '/' + self.test_name + '.csv'
         self.checkpoint_path = checkpoint_path + '/checkpoint'
 
-    def log_results(self, results):
-        df = pd.DataFrame(np.array([results]),
-                          columns=["Langs", "Test Acc", "Test Bleu"])
-        df.to_csv(self.test_log_path)
+    def log_results(self, results, columns=None):
+        if columns is None:
+            columns = ["direction", "test_acc", "test_bleu"]
+        assert len(results) == len(columns)
+        results = [r if isinstance(r, list) else [r] for r in results]
+        df = pd.DataFrame({c:r for c,r in zip(columns, results)})
+        df.to_csv(self.test_log_path, index=False)
 
     def log_examples(self, input_batch, target_batch, prediction_batch, tokenizer):
         prediction_batch = mask_after_stop(prediction_batch, stop_token=2)
