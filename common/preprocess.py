@@ -192,18 +192,23 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
     world_size=None, rank=None):
     """Load and preprocess the data.
     langs : list of language ids
-    batch_size : batch_size for the dataloaders.
+    batch_size : batch_size for the dataloaders (per gpu).
     vocab_size : size of the vocab(s) of tokenizer(s)
     dataset_name : string name for the huggingface dataset
     tokenizer : tokenizer or list of tokenizers. If None tokenizer is trained.
     multi : bool = True, wether to use a shared tokenizer for all languages
     path : str = None, if given the location where the tokenizer will be saved.
-    distributed : bool - wether to set up a distributed dataset.
+    distributed : bool - wether to set up a distributed training dataset.
     world_size : int - number of processes * gpus (only needed for distributed).
     rank : int - rank of the process (only needed for distributed).
 
     Returns: preprocessed dataloaders for train, val and test splits and
     the trained tokenizer(s).
+    
+    Note on distributed training: with distributed training the batch_size
+    given should be the batch size per gpu. So each step there will be
+    batch_size * world_size examples processed. Also note that the val and
+    test datasets are not distributed and are only processed on rank 0.
     """
 
     dataset = datasets.load_dataset(dataset_name)
@@ -214,17 +219,14 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
 
     save_tokenizer = True if tokenizer is None else False
 
-    # train will be distributed so multiply batch-size. val/test will only be on rank 0
-    train_batch_size = batch_size if world_size is None else world_size * batch_size
-
-    train_dataloader, tokenizer = preprocess(train_dataset, langs, batch_size=train_batch_size, tokenizer=tokenizer,
+    train_dataloader, tokenizer = preprocess(train_dataset, langs, batch_size=batch_size, tokenizer=tokenizer,
         vocab_size=vocab_size, max_len=max_len, multi=multi, distributed=distributed, world_size=world_size, rank=rank)
 
     val_dataloader, _ = preprocess(val_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len,
-        multi=multi, distributed=distributed, world_size=world_size, rank=rank)
+        multi=multi, distributed=False)
 
     test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len,
-        multi=multi, distributed=distributed, world_size=world_size, rank=rank)
+        multi=multi, distributed=False)
     
     # save tokenizers if trained
     if (path is not None) and save_tokenizer:
