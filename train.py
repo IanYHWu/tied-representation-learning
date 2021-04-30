@@ -168,7 +168,7 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
 
     epoch = 0
     if params.checkpoint:
-        model, optimizer, epoch = logging.load_checkpoint(logger.checkpoint_path, model, optimizer)
+        model, optimizer, epoch = logging.load_checkpoint(logger.checkpoint_path, device, model, optimizer)
 
     batch_losses, batch_accs = [], []
     epoch_losses, epoch_accs = [], []
