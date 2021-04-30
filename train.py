@@ -198,9 +198,6 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
         # train
         epoch_loss = 0.0
         epoch_acc = 0.0
-        val_epoch_loss = 0.0
-        val_epoch_acc = 0.0
-        val_bleu = 0.0
         for i, data in enumerate(train_dataloader):
 
             if multi:
@@ -240,6 +237,10 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
 
         # val only on rank 0
         if rank == 0:
+
+            val_epoch_loss = 0.0
+            val_epoch_acc = 0.0
+            val_bleu = 0.0
             if val_dataloader is not None:
                 bleu = BLEU()
                 bleu.set_excluded_indices([0, 2])
@@ -255,6 +256,9 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
 
                     batch_loss, batch_acc = val_step(x, y, model, criterion, bleu, device,
                         distributed=params.distributed)
+
+                    batch_loss = batch_loss.item()
+                    batch_acc = batch_acc.item()
                     val_epoch_loss += (batch_loss - val_epoch_loss) / (i + 1)
                     val_epoch_acc += (batch_acc - val_epoch_acc) / (i + 1)
 
@@ -277,11 +281,10 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
                     wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
                                'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu})
 
-        epoch += 1
-
-        if rank == 0:
-            logger.save_model(epoch, model, optimizer)
+            logger.save_model(epoch, model, optimizer, scheduler=scheduler)
             logger.log_results([epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu])
+            
+        epoch += 1
 
     return epoch_losses, epoch_accs, val_epoch_losses, val_epoch_accs
 
