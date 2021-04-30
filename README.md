@@ -30,8 +30,3 @@ python test.py --name='my_model' --test_name='my_test' --custom_model='model_nam
 This will automatically create a ```test``` folder inside the training folder, where the test logs will be stored. See
 ```common.test_arguments.py``` for more testing options. 
 
-
-## TODO
-* Test: train.py, test.py, etc.
-* Test: multilingual translation
-
