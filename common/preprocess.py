@@ -214,7 +214,10 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
 
     save_tokenizer = True if tokenizer is None else False
 
-    train_dataloader, tokenizer = preprocess(train_dataset, langs, batch_size=batch_size, tokenizer=tokenizer,
+    # train will be distributed so multiply batch-size. val/test will only be on rank 0
+    train_batch_size = batch_size if world_size is None else world_size * batch_size
+
+    train_dataloader, tokenizer = preprocess(train_dataset, langs, batch_size=train_batch_size, tokenizer=tokenizer,
         vocab_size=vocab_size, max_len=max_len, multi=multi, distributed=distributed, world_size=world_size, rank=rank)
 
     val_dataloader, _ = preprocess(val_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len,
