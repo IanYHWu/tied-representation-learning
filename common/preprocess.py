@@ -1,9 +1,12 @@
 """
-Pipeline for loading the TED-Multilingual dataset via HuggingFace,
-training BPE tokenizers for given languages and creating a torch dataloader.
+Pipeline for loading translation dataset via HuggingFace, training BPE
+tokenizers for given languages and creating a torch dataloader.
 
 If doing multi-lingual translation then a single, shared tokenizer is trained 
 however for bilingual translation individual tokenizers are used.
+
+For a dataset to be loadable it needs a filter_languages function which will
+extract the required translations from each example.
 """
 
 import torch
@@ -108,31 +111,48 @@ def pad_sequence(sequences, batch_first=False, padding_value=0.0, max_len = None
     return out_tensor
 
 
-def preprocess(dataset, langs, batch_size=32, tokenizers=None, vocab_size=None, max_len=None):
-    """Applies full preprocessing to dataset: filtering, tokenization,
+def preprocess(dataset, langs, batch_size=32, tokenizer=None, vocab_size=None, max_len=None,
+    multi=False, distributed=False, world_size=None, rank=None):
+    """
+    Applies full preprocessing to dataset: filtering, tokenization,
     padding and conversion to torch dataloader.
+
     dataset : HuggingFace Ted-Multi Dataset
     langs : list of languages
     batch_size : int - batch size for dataloader
-    tokenizers : list of pretrained tokenizers or None
-    (if None tokenizers will be trained).'
-    vocab_size : int - vocab size for tokenization
-    (only needed if tokenziers is None)"""
+    tokenizers : list of pretrained tokenizers or None (if None tokenizers will be trained).
+    vocab_size : int - vocab size for tokenization (only needed if tokenziers is None)
+    max_len : int - maximum allowed length of sequences.
+    multi : bool - wether to do multilingual preprocessing.
+    distributed : bool - wether to set up a distributed dataset.
+    world_size : int - number of processes * gpus (only needed for distributed).
+    rank : int - rank of the process (only needed for distributed).
+
+    Returns:
+
+    """
 
     # filtering
     dataset = filter_languages(dataset, langs)
 
     # tokenization
-    if tokenizers is None:
-        tokenizers = [train_tokenizer([lang], dataset, vocab_size) for lang in langs]
+    if multi:
+        if tokenizer is None:
+            tokenizer = train_tokenizer(langs, dataset, vocab_size)
 
-    def tokenize_fn(example):
-        """apply tokenization"""
-        l_tok = [tokenizer.encode(example[l]) for tokenizer, l in zip(tokenizers, langs)]
-        return {'input_ids_' + l: tok.ids for l, tok in zip(langs, l_tok)}
+        def tokenize_fn(example):
+            """apply tokenization"""
+            l_tok = [tokenizer.encode(example[l]) for l in langs]
+            return {'input_ids_' + l: tok.ids for l, tok in zip(langs, l_tok)}
+    else:
+        if tokenizer is None:
+            tokenizer = [train_tokenizer([lang], dataset, vocab_size) for lang in langs]
 
-    # padding and convert to torch
-
+        def tokenize_fn(example):
+            """apply tokenization"""
+            l_tok = [tok.encode(example[l]) for tok, l in zip(tokenizer, langs)]
+            return {'input_ids_' + l: tok.ids for l, tok in zip(langs, l_tok)}
+    
     dataset = dataset.map(tokenize_fn)
 
     # padding and convert to torch
@@ -147,60 +167,29 @@ def preprocess(dataset, langs, batch_size=32, tokenizers=None, vocab_size=None, 
 
     print("Dataset Size: {}".format(len(dataset[langs[0]])))
 
-    dataloader = torch.utils.data.DataLoader(dataset,
-                                             batch_size=batch_size,
-                                             collate_fn=pad_seqs)
+    if distributed:
+        sampler = torch.utils.data.distributed.DistributedSampler(dataset,
+            num_replicas=world_size,
+            rank=rank)
+        dataloader = torch.utils.data.DataLoader(dataset,
+                                                 batch_size=batch_size,
+                                                 collate_fn=pad_seqs,
+                                                 shuffle=False,
+                                                 num_workers=0,
+                                                 pin_memory=True,
+                                                 sampler=sampler)
+    else:
+        dataloader = torch.utils.data.DataLoader(dataset,
+                                                 batch_size=batch_size,
+                                                 collate_fn=pad_seqs)
 
-    return dataloader, tokenizers
-
-
-def preprocess_multi(dataset, langs, batch_size=32, tokenizer=None, vocab_size=None, max_len=None):
-    """Applies full preprocessing to dataset: filtering, tokenization,
-    padding and conversion to torch dataloader.
-    dataset : HuggingFace Ted-Multi Dataset
-    langs : list of languages
-    batch_size : int - batch size for dataloader
-    tokenizers : pretrained tokenizers or None
-    (if None tokenizer will be trained).'
-    vocab_size : int - vocab size for tokenization
-    (only needed if tokenziers is None)"""
-
-    # filtering
-    dataset = filter_languages(dataset, langs)
-
-    # tokenization
-    if tokenizer is None:
-        tokenizer = train_tokenizer(langs, dataset, vocab_size)
-
-    def tokenize_fn(example):
-        """apply tokenization"""
-        l_tok = [tokenizer.encode(example[l]) for l in langs]
-        return {'input_ids_' + l: tok.ids for l, tok in zip(langs, l_tok)}
-
-    # padding and convert to torch
-    dataset = dataset.map(tokenize_fn)
-
-    # padding and convert to torch
-    cols = ['input_ids_' + l for l in langs]
-    dataset.set_format(type='torch', columns=cols)
-
-    def pad_seqs(examples):
-        """Apply padding"""
-        ex_langs = list(zip(*[tuple(ex[col] for col in cols) for ex in examples]))
-        ex_langs = tuple(pad_sequence(x, batch_first=True, max_len=max_len) for x in ex_langs)
-        return ex_langs
-
-    print("Dataset Size: {}".format(len(dataset[langs[0]])))
-
-    dataloader = torch.utils.data.DataLoader(dataset,
-                                             batch_size=batch_size,
-                                             collate_fn=pad_seqs)
 
     return dataloader, tokenizer
 
 
 def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
-    tokenizer=None, multi=True, max_len=None, path=None):
+    tokenizer=None, multi=True, max_len=None, path=None, distributed=False,
+    world_size=None, rank=None):
     """Load and preprocess the data.
     langs : list of language ids
     batch_size : batch_size for the dataloaders.
@@ -209,9 +198,13 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
     tokenizer : tokenizer or list of tokenizers. If None tokenizer is trained.
     multi : bool = True, wether to use a shared tokenizer for all languages
     path : str = None, if given the location where the tokenizer will be saved.
+    distributed : bool - wether to set up a distributed dataset.
+    world_size : int - number of processes * gpus (only needed for distributed).
+    rank : int - rank of the process (only needed for distributed).
 
     Returns: preprocessed dataloaders for train, val and test splits and
-    the trained tokenizer(s)."""
+    the trained tokenizer(s).
+    """
 
     dataset = datasets.load_dataset(dataset_name)
 
@@ -221,36 +214,24 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
 
     save_tokenizer = True if tokenizer is None else False
 
-    if multi:
-        train_dataloader, tokenizer = preprocess_multi(train_dataset, langs,
-                                                       batch_size=batch_size,
-                                                       tokenizer=tokenizer,
-                                                       vocab_size=vocab_size,
-                                                       max_len=max_len)
-        val_dataloader, _ = preprocess_multi(val_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len)
-        test_dataloader, _ = preprocess_multi(test_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len)
-        
-        # save tokenizers if trained
-        if (path is not None) and save_tokenizer:
+    train_dataloader, tokenizer = preprocess(train_dataset, langs, batch_size=batch_size, tokenizer=tokenizer,
+        vocab_size=vocab_size, max_len=max_len, multi=multi, distributed=distributed, world_size=world_size, rank=rank)
+
+    val_dataloader, _ = preprocess(val_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len,
+        multi=multi, distributed=distributed, world_size=world_size, rank=rank)
+
+    test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len,
+        multi=multi, distributed=distributed, world_size=world_size, rank=rank)
+    
+    # save tokenizers if trained
+    if (path is not None) and save_tokenizer:
+        if isinstance(tokenizer, list):
+            for tok, lang in zip(tokenizer, langs):
+                tok.save(path + '/' + lang + '_tokenizer.json')
+        else:
             tokenizer.save(path + '/multi_tokenizer.json')
 
-        return train_dataloader, val_dataloader, test_dataloader, tokenizer
-
-    else:
-        train_dataloader, tokenizers = preprocess(train_dataset, langs,
-                                                  batch_size=batch_size,
-                                                  tokenizers=tokenizer,
-                                                  vocab_size=vocab_size,
-                                                  max_len=max_len)
-        val_dataloader, _ = preprocess(val_dataset, langs, batch_size=batch_size, tokenizers=tokenizers, max_len=max_len)
-        test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size, tokenizers=tokenizers, max_len=max_len)
-
-        # save tokenizers
-        if (path is not None) & (save_tokenizer):
-            for tok, lang in zip(tokenizers, langs):
-                tok.save(path + '/' + lang + '_tokenizer.json')
-
-        return train_dataloader, val_dataloader, test_dataloader, tokenizers
+    return train_dataloader, val_dataloader, test_dataloader, tokenizer
 
 
 def _detokenize(x, tokenizer, as_lists=True):

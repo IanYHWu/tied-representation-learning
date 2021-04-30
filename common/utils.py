@@ -3,9 +3,9 @@ import numpy as np
 from itertools import combinations
 
 
-def to_devices(tensors, device):
+def to_devices(tensors, device, **kwargs):
     """ helper function to send tensors to device """
-    return (tensor.to(device) for tensor in tensors)
+    return (tensor.to(device, **kwargs) for tensor in tensors)
 
 
 def loss_fn(y_pred, y_true, criterion):
