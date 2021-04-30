@@ -23,6 +23,8 @@ python train.py --name='my_model' --custom_model='model_name'
 ```
 Parameters defined in ```hyperparams/config.yml``` overwrite any parameters defined from the command line.
 
+To use distributed training add the argument ```--distributed``` and then set ```--nodes``` and ```---gpus``` to the number of nodes and gpus you have available and ``` -nr ``` to the node number (for ranking). Ensure that the environment variables ```MASTER_ADDR``` and ```MASTER_PORT``` have been set before running train.py.
+
 To test a model, run
 ```
 python test.py --name='my_model' --test_name='my_test' --custom_model='model_name'
