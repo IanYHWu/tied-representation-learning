@@ -138,7 +138,7 @@ def test(device, params, test_dataloader, tokenizer, verbose=50):
     train_params = logging.load_params(params.location + '/' + params.name)
 
     model = initialiser.initialise_model(train_params, device)
-    model = logging.load_checkpoint(logger.checkpoint_path, device, model)
+    model, _, _, _ = logging.load_checkpoint(logger.checkpoint_path, device, model)
 
     test_batch_accs = []
     bleu = BLEU()
@@ -180,7 +180,7 @@ def multi_test(device, params, test_dataloader, tokenizer, verbose=50):
     train_params = logging.load_params(params.location + '/' + params.name)
 
     model = initialiser.initialise_model(train_params, device)
-    model = logging.load_checkpoint(logger.checkpoint_path, device, model)
+    model, _, _, _ = logging.load_checkpoint(logger.checkpoint_path, device, model)
 
     assert tokenizer is not None
     add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
