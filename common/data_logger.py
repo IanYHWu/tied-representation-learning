@@ -53,12 +53,15 @@ class TrainLogger:
                                        "Val Epoch Acc", "Val Bleu"])
             df.to_csv(self.log_path)
 
-    def save_model(self, epoch, model, optimizer):
-        torch.save({
+    def save_model(self, epoch, model, optimizer, scheduler=None):
+        save_dict = {
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-        }, self.checkpoint_path)
+        }
+        if scheduler is not None:
+            save_dict['scheduler_state_dict'] = scheduler.state_dict()
+        torch.save(save_dict, self.checkpoint_path)
 
     def save_params(self):
         with open(self.root_path + '/input_params.txt', 'w') as f:
@@ -127,15 +130,16 @@ def load_params(root_path):
     return params
 
 
-def load_checkpoint(path, device, model, optimizer=None):
+def load_checkpoint(path, device, model, optimizer=None, scheduler=None):
     checkpoint = torch.load(path, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
+    epoch = checkpoint['epoch']
+
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        epoch = checkpoint['epoch']
-        return model, optimizer, epoch
-    else:
-        return model
+        
+    if scheduler is not None:
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
-
+    return model, optimizer, epoch, scheduler
 

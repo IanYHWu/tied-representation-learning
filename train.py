@@ -168,7 +168,8 @@ def train(device, logger, params, train_dataloader, val_dataloader=None, tokeniz
 
     epoch = 0
     if params.checkpoint:
-        model, optimizer, epoch = logging.load_checkpoint(logger.checkpoint_path, device, model, optimizer)
+        model, optimizer, epoch, scheduler = logging.load_checkpoint(logger.checkpoint_path, device, model,
+            optimizer=optimizer, scheduler=scheduler)
 
     batch_losses, batch_accs = [], []
     epoch_losses, epoch_accs = [], []
@@ -275,16 +276,32 @@ def main(params):
     if len(params.langs) == 2 and not params.pivot:
         # bilingual translation
 
+        # load tokenizers if continuing
+        if params.checkpoint:
+            tokenizers = []
+            for lang in params.langs:
+                tokenizers.append(Tokenizer.from_file(logger.root_path + '/' + lang + '_tokenizer.json'))
+        else:
+            tokenizers = None
+
         train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
-            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False, path=logger.root_path)
+            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False, path=logger.root_path,
+            tokenizer=tokenizers)
 
         train(device, logger, params, train_dataloader, val_dataloader=val_dataloader, verbose=params.verbose)
 
     elif len(params.langs) > 2 and not params.pivot:
         # multilingual translation
 
+        # load tokenizers if continuing
+        if params.checkpoint:
+            tokenizer = Tokenizer.from_file(logger.root_path + '/multi_tokenizer.json')
+        else:
+            tokenizer = None
+
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
-            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path)
+            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path,
+            tokenizer=tokenizer)
 
         train(device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
               verbose=params.verbose)
