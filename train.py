@@ -28,6 +28,7 @@ def seed_all(SEED):
     torch.cuda.manual_seed_all(SEED)
     np.random.seed(SEED)
 
+
 def train_step(x, y, model, criterion, optimizer, scheduler, device, distributed=False):
     # get masks and targets
     y_inp, y_tar = y[:, :-1], y[:, 1:]
@@ -109,7 +110,7 @@ def aux_train_step(x, y, model, criterion, aux_criterion, frozen_layers,
     return batch_loss, batch_acc
 
 
-def val_step(x, y, model, criterion, bleu, device):
+def val_step(x, y, model, criterion, bleu, device, distributed=False):
     # get masks and targets
     y_inp, y_tar = y[:, :-1], y[:, 1:]
     enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
@@ -213,9 +214,10 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
 
             if params.auxiliary:
                 batch_loss, batch_acc = aux_train_step(x, y, model, criterion, aux_criterion,
-                                                       params.frozen_layers, optimizer, scheduler, device)
+                    params.frozen_layers, optimizer, scheduler, device, distributed=params.distributed)
             else:
-                batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, scheduler, device)
+                batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, scheduler,
+                    device, distributed=params.distributed)
 
             if rank == 0:
                 batch_loss = batch_loss.item()
@@ -251,7 +253,8 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
                     else:
                         x, y = data
 
-                    batch_loss, batch_acc = val_step(x, y, model, criterion, bleu, device)
+                    batch_loss, batch_acc = val_step(x, y, model, criterion, bleu, device,
+                        distributed=params.distributed)
                     val_epoch_loss += (batch_loss - val_epoch_loss) / (i + 1)
                     val_epoch_acc += (batch_acc - val_epoch_acc) / (i + 1)
 
