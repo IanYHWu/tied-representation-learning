@@ -181,7 +181,8 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
             optimizer=optimizer, scheduler=scheduler)
     
     if params.distributed:
-        model = nn.parallel.DistributedDataParallel(model, device_ids=[device.index])
+        model = nn.parallel.DistributedDataParallel(model, device_ids=[device.index],
+            find_unused_parameters=True)
 
     if rank == 0:
         if params.wandb:
@@ -284,9 +285,10 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
 
 def main(gpu, params):
     """ Loads the dataset and trains the model."""
-    rank = args.nr * args.gpus + gpu
+    rank = params.nr * params.gpus + gpu
     if params.distributed:
-        dist.init_process_group(backend='nccl', init_method='env://', world_size=args.world_size, rank=rank)
+        dist.init_process_group(backend='nccl', init_method='env://',
+            world_size=params.world_size, rank=rank)
     seed_all(SEED)
 
     # get gpu device
