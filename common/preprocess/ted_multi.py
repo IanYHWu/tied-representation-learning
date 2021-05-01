@@ -1,7 +1,7 @@
 import torch
 import datasets
 
-from common.preprocess.preprocess_utils import train_tokenizer
+from common.preprocess.preprocess_utils import train_tokenizer, pad_sequence
 from common.utils import sample_direction, get_direction
 
 
