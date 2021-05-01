@@ -40,10 +40,17 @@ def accuracy_fn(y_pred, y_true):
     return (_acc * _mask).sum() / _mask.sum()
 
 
-def sample_direction(data, langs):
+def sample_direction(data, langs, excluded=None):
     """randomly sample a source and target language from
     n_langs possible combinations"""
-    source, target = np.random.choice(len(langs), size=(2,), replace=False)
+    n_langs = len(langs)
+    p = np.ones((n_langs,n_langs))
+    np.fill_diagonal(p, 0.0)
+    p = (p/p.sum()).flatten()
+    for s, t in excluded:
+        p[langs.index(s), langs.index(t)] = 0.0
+    n = np.random.choice(n_langs**2, p=p)
+    source, target = n // n_langs, n % n_langs
     return (data[source], data[target]), (langs[source], langs[target])
 
 

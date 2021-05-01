@@ -275,7 +275,7 @@ def main(gpu, params):
     seed_all(SEED)
 
     # get gpu device
-    device = torch.device(gpu)
+    device = torch.device(gpu if torch.cuda.is_available() else 'cpu')
 
     # only wandb on main process
     if rank == 0 and params.wandb:

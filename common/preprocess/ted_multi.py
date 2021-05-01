@@ -1,7 +1,7 @@
 import torch
 import datasets
 
-from common.preprocess.preprocess_utils import train_tokenizer, pad_sequence
+from common.preprocess.preprocess_utils import train_tokenizer, pad_sequence, AddTargetTokens
 from common.utils import sample_direction, get_direction
 
 
@@ -128,7 +128,7 @@ class TedMultiDataLoader:
 
         elif self.mode == 'multi':
             assert self.tokenizer is not None
-            self.add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
+            self.add_targets = AddTargetTokens(langs, tokenizer)
 
     def __iter__(self):
         self.iterator = iter(self.dataloader)
