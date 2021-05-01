@@ -100,68 +100,68 @@ def preprocess(dataset, langs, batch_size=32, tokenizer=None, vocab_size=None, m
 
 
 class TedMultiDataLoader:
-	"""
-	Creats a dataloader for ted multi dataset for a given mode.
+    """
+    Creats a dataloader for ted multi dataset for a given mode.
 
-	Mode behaviours:
-		bilingual: always returns x, y as source, target.
+    Mode behaviours:
+        bilingual: always returns x, y as source, target.
 
-		multi: during tarining samples a direction and returns
-		source, target, source language and target language. If
-		testing then returns a dict of all generated translation
-		pairs.
+        multi: during tarining samples a direction and returns
+        source, target, source language and target language. If
+        testing then returns a dict of all generated translation
+        pairs.
 
-		pivot: returns the directions required for pivot training.
-	"""
+        pivot: returns the directions required for pivot training.
+    """
 
-	def __init__(self, mode, langs, dataloader, tokenizer=None, pivot_pair_ind=None, test=False, excluded=None):
-		self.mode = mode 
-		self.langs = langs 
-		self.dataloader = dataloader
-		self.test = test 
-		self.excluded = excluded
-		self.tokenizer = tokenizer
+    def __init__(self, mode, langs, dataloader, tokenizer=None, pivot_pair_ind=None, test=False, excluded=None):
+        self.mode = mode 
+        self.langs = langs 
+        self.dataloader = dataloader
+        self.test = test 
+        self.excluded = excluded
+        self.tokenizer = tokenizer
 
-		if self.mode == 'pivot':
-			assert self.pivot_pair_ind is not None
-			self.pivot_pair0, self.pivot_pair1 = pivot_pair_ind
+        if self.mode == 'pivot':
+            assert self.pivot_pair_ind is not None
+            self.pivot_pair0, self.pivot_pair1 = pivot_pair_ind
 
-		elif self.mode == 'multi':
-			assert self.tokenizer is not None
-			self.add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
+        elif self.mode == 'multi':
+            assert self.tokenizer is not None
+            self.add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
 
-	def __iter__(self):
-		self.iterator = iter(self.dataloader)
+    def __iter__(self):
+        self.iterator = iter(self.dataloader)
 
-	def __next__(self):
-		data = next(self.iterator)
+    def __next__(self):
+        data = next(self.iterator)
 
-		if self.mode == 'bilingual':
-			return data
-		
-		elif self.mode == 'multi':
-			return self.get_multi(data)
+        if self.mode == 'bilingual':
+            return data
+        
+        elif self.mode == 'multi':
+            return self.get_multi(data)
        
         elif self.mode == 'pivot':
             x, y = get_direction(data, self.pivot_pair0, self.pivot_pair1, excluded=self.excluded)
             return x, y
         
         else:
-        	raise NotImplementedError
+            raise NotImplementedError
 
-	def get_multi(self, data):
-		if self.test:
-			# gets all directions and adds target tokens
-			data = get_directions(data, self.langs, excluded=self.excluded)
-			for direction, (x, y, y_lang) in data.items():
-				x = self.add_targets(x, y_lang)
-				data[direction] = (x, y, y_lang)
-			return data
-		else:
-			# sample a tranlsation direction and add target tokens
-			(x, y), (x_lang, y_lang) = sample_direction(data, self.langs, excluded=self.excluded)
-			x = self.add_targets(x, y_lang)
-			return x, y
+    def get_multi(self, data):
+        if self.test:
+            # gets all directions and adds target tokens
+            data = get_directions(data, self.langs, excluded=self.excluded)
+            for direction, (x, y, y_lang) in data.items():
+                x = self.add_targets(x, y_lang)
+                data[direction] = (x, y, y_lang)
+            return data
+        else:
+            # sample a tranlsation direction and add target tokens
+            (x, y), (x_lang, y_lang) = sample_direction(data, self.langs, excluded=self.excluded)
+            x = self.add_targets(x, y_lang)
+            return x, y
 
 
 def load_ted_multi(langs, vocab_size, batch_size=32, mode='bilingual',
@@ -217,10 +217,10 @@ def load_ted_multi(langs, vocab_size, batch_size=32, mode='bilingual',
 
     # create dataloaders
     train_dataloader = TedMultiDataLoader(mode, langs, train_dataloader,
-    	tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=False, excluded=excluded)
+        tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=False, excluded=excluded)
     val_dataloader = TedMultiDataLoader(mode, langs, val_dataloader,
-    	tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=False, excluded=excluded)
+        tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=False, excluded=excluded)
     test_dataloader = TedMultiDataLoader(mode, langs, test_dataloader,
-    	tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=True, excluded=excluded)
+        tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=True, excluded=excluded)
 
     return train_dataloader, val_dataloader, test_dataloader, tokenizer
