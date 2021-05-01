@@ -1,7 +1,7 @@
 import torch
 import datasets
 
-from common.preprocess.preprocess_utils import train_tokenizer, pad_sequence, detoknize, AddTargetTokens
+from common.preprocess.preprocess_utils import train_tokenizer, pad_sequence, detokenize, AddTargetTokens
 from common.preprocess.ted_multi import load_ted_multi
 
 def load_and_preprocess(dataset_name, *args, **kwargs):

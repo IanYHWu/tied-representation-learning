@@ -132,6 +132,7 @@ class TedMultiDataLoader:
 
     def __iter__(self):
         self.iterator = iter(self.dataloader)
+        return self
 
     def __next__(self):
         data = next(self.iterator)
@@ -224,3 +225,11 @@ def load_ted_multi(langs, vocab_size, batch_size=32, mode='bilingual',
         tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=True, excluded=excluded)
 
     return train_dataloader, val_dataloader, test_dataloader, tokenizer
+
+
+if __name__ == "__main__":
+
+    _dataloader = [(0,1), (0,2), (3,4), (4,5)]
+    dataloader = TedMultiDataLoader('bilingual', ['en', 'es'], _dataloader)
+    for data in dataloader:
+        print(data)
