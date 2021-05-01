@@ -161,12 +161,6 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
         specify the pivot pair in pivot_pair_ind
     """
 
-    multi = False
-    if len(params.langs) > 2 and not pivot:
-        assert tokenizer is not None
-        multi = True
-        add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
-
     model = initialiser.initialise_model(params, device)
     optimizer = torch.optim.Adam(model.parameters())
     scheduler = WarmupDecay(optimizer, params.warmup_steps, params.d_model, lr_scale=params.lr_scale)
@@ -198,16 +192,7 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
         # train
         epoch_loss = 0.0
         epoch_acc = 0.0
-        for i, data in enumerate(train_dataloader):
-
-            if multi:
-                # sample a tranlsation direction and add target tokens
-                (x, y), (x_lang, y_lang) = sample_direction(data, params.langs)
-                x = add_targets(x, y_lang)
-            elif pivot:
-                x, y = get_direction(data, pivot_pair_ind[0], pivot_pair_ind[1])
-            else:
-                x, y = data
+        for i, (x, y) in enumerate(train_dataloader):
 
             if params.auxiliary:
                 batch_loss, batch_acc = aux_train_step(x, y, model, criterion, aux_criterion,
@@ -244,15 +229,7 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
             if val_dataloader is not None:
                 bleu = BLEU()
                 bleu.set_excluded_indices([0, 2])
-                for i, data in enumerate(val_dataloader):
-                    if multi:
-                        # sample a tranlsation direction and add target tokens
-                        (x, y), (x_lang, y_lang) = sample_direction(data, params.langs)
-                        x = add_targets(x, y_lang)
-                    elif pivot:
-                        x, y = get_direction(data, pivot_pair_ind[0], pivot_pair_ind[1])
-                    else:
-                        x, y = data
+                for i, (x, y) in enumerate(val_dataloader):
 
                     batch_loss, batch_acc = val_step(x, y, model, criterion, bleu, device,
                         distributed=params.distributed)
@@ -320,8 +297,9 @@ def main(gpu, params):
             tokenizers = None
 
         train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
-            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False, path=logger.root_path,
-            tokenizer=tokenizers, distributed=params.distributed, world_size=params.world_size, rank=rank)
+            params.dataset, params.langs, params.vocab_size, batch_size=params.batch_size, mode='bilingual',
+            path=logger.root_path, pivot_pair_ind=None, tokenizer=tokenizers, distributed=params.distributed,
+            world_size=params.world_size, rank=rank, excluded=params.excluded)
 
         train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, verbose=params.verbose)
 
@@ -335,8 +313,9 @@ def main(gpu, params):
             tokenizer = None
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
-            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path,
-            tokenizer=tokenizer, distributed=params.distributed, world_size=params.world_size, rank=rank)
+            params.dataset, params.langs, params.vocab_size, batch_size=params.batch_size, mode='multi',
+            path=logger.root_path, pivot_pair_ind=None, tokenizer=tokenizer, distributed=params.distributed,
+            world_size=params.world_size, rank=rank, excluded=params.excluded)
 
         train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
               verbose=params.verbose)
@@ -350,8 +329,9 @@ def main(gpu, params):
             tokenizer = None
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
-            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path,
-            distributed=params.distributed, world_size=params.world_size, rank=rank, tokenizer=tokenizer)
+            params.dataset, params.langs, params.vocab_size, batch_size=params.batch_size, mode='pivot',
+            path=logger.root_path, pivot_pair_ind=params.pivot_pair_ind, tokenizer=tokenizer, distributed=params.distributed,
+            world_size=params.world_size, rank=rank, excluded=params.excluded)
 
         train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
               verbose=params.verbose, pivot=True, pivot_pair_ind=params.pivot_inds)

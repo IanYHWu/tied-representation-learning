@@ -53,19 +53,27 @@ def get_direction(data, ind_source, ind_target):
     return data[ind_source], data[ind_target]
 
 
-def get_pairs(inp_list):
-    """get all ordered pairs of given list"""
+def get_pairs(inp_list, excluded=None):
+    """get all ordered pairs of given list
+
+    excluded : list of tuples of pairs to ignore."""
     pairs = list(combinations(inp_list, 2))
     pairs.extend([(y,x) for x,y in pairs])
+
+    if excluded is not None:
+        pairs = [(s, t) for s, t in pairs if (s, t) not in excluded]
+
     return pairs
 
 
-def get_directions(data, langs):
+def get_directions(data, langs, excluded=None):
     """unpacks all translation pairs from a batch of translations. Takes
     a dict of batches of tensors and returns a dict of tensors for each
-    language direction."""
+    language direction.
 
-    source, target = list(zip(*get_pairs(langs)))
+    excluded : list of tuples of pairs to ignore."""
+
+    source, target = list(zip(*get_pairs(langs, excluded=excluded)))
 
     batch_size = data[0].shape[0]
     out = {}
@@ -78,12 +86,14 @@ def get_directions(data, langs):
     return out
 
 
-def get_all_directions(data, langs):
+def get_all_directions(data, langs, excluded=None):
     """unpacks all translation pairs from a batch of translations. Takes
     a dict of batches of tensors and returns a tensor of first dim size
-    batch_size * len(langs) * (len(langs) - 1)."""
+    batch_size * len(langs) * (len(langs) - 1).
 
-    source, target = list(zip(*get_pairs(langs)))
+    excluded : list of tuples of pairs to ignore."""
+
+    source, target = list(zip(*get_pairs(langs, excluded=None)))
 
     batch_size = data[0].shape[0]
     full_targets = []
