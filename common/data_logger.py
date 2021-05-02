@@ -3,6 +3,7 @@ Writing useful things to disk
 """
 
 import os
+from pathlib import Path
 import pandas as pd
 import torch
 import numpy as np
@@ -25,11 +26,9 @@ class TrainLogger:
 
     def make_dirs(self):
         root_path = self.root + '/' + self.name
-        if not os.path.isdir(root_path):
-            os.makedirs(root_path)
+        Path(root_path).mkdir(parents=True, exist_ok=True)
         checkpoint_path = root_path + '/checkpoint'
-        if not os.path.isdir(checkpoint_path):
-            os.makedirs(checkpoint_path)
+        Path(checkpoint_path).mkdir(parents=True, exist_ok=True)
         self.root_path = root_path
         self.checkpoint_path = checkpoint_path + '/checkpoint'
         self.log_path = self.root_path + '/' + self.name + '.csv'
@@ -86,8 +85,7 @@ class TestLogger:
         root_path = self.root + '/' + self.name
         test_path = root_path + '/test'
         checkpoint_path = root_path + '/checkpoint'
-        if not os.path.isdir(test_path):
-            os.makedirs(test_path)
+        Path(test_path).mkdir(parents=True, exist_ok=True)
         self.test_path = test_path
         self.root_path = root_path
         self.test_log_path = test_path + '/' + self.test_name + '.csv'

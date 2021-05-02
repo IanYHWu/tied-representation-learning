@@ -6,10 +6,13 @@ import argparse
 
 train_parser = argparse.ArgumentParser(description='MNMT Input Params, Training')
 
+##### required args
 train_parser.add_argument(
     '--name', required=True,
     type=str, help="Name of run"
 )
+
+##### general args
 train_parser.add_argument(
     '--location', default='..',
     type=str, help="Save folder location"
@@ -34,6 +37,63 @@ train_parser.add_argument(
     '--langs', nargs='+', default=['en', 'fr'],
     type=str, help='Languages to translate'
 )
+train_parser.add_argument(
+    '--verbose', default=50, type=int,
+    help='Frequency to print batch results.'
+)
+train_parser.add_argument(
+    '--wandb', action='store_true',
+    help='Record the run in weights and biases.'
+)
+
+##### distributed training args
+train_parser.add_argument(
+    '--distributed', action='store_true',
+    help='Distribute training over multiple gpus (if available)'
+)
+train_parser.add_argument(
+    '--nodes', default=1, type=int,
+    help='Number of data loading workers.'
+)
+train_parser.add_argument(
+    '--nr', default=0, type=int,
+    help='Ranking within the nodes.'
+)
+train_parser.add_argument(
+    '--gpus', default=1, type=int,
+    help='Number of gpus per node.'
+)
+
+##### pivot args
+train_parser.add_argument(
+    '--pivot', action='store_true',
+    help='Train a bilingual model that is part of a pivot'
+)
+train_parser.add_argument(
+    '--pivot_inds', nargs='+', default=[0, 1],
+    type=int,
+    help='Pivot indices - e.g. if langs=[de, en, fr], then training the de -> en pivot will require pivot_inds=(0, 1)'
+)
+train_parser.add_argument(
+    '--pivot_tokenizer_path', default=None, type=str,
+    help='Path to multilingual tokeniser for pivot training'
+)
+
+##### auxiliary loss args
+train_parser.add_argument(
+    '--auxiliary', action='store_true',
+    help="Use auxiliary loss on encoder output."
+)
+train_parser.add_argument(
+    '--frozen_layers', nargs='+', default=[],
+    type=int, help='Encoder layers frozen for grad wrt aux loss.'
+)
+train_parser.add_argument(
+    '--aux_strength', default=1.0, type=float,
+    help='Strength of auxiliary loss relative to main loss.'
+)
+
+##### hyperparameters
 train_parser.add_argument(
     '--vocab_size', default=2000, type=int,
     help='Vocab size'
@@ -81,38 +141,5 @@ train_parser.add_argument(
 train_parser.add_argument(
     '--add_epochs', default=0, type=int,
     help='Add epochs to train. Used for checkpointing'
-)
-train_parser.add_argument(
-    '--pivot', action='store_true',
-    help='Train a bilingual model that is part of a pivot'
-)
-train_parser.add_argument(
-    '--pivot_inds', nargs='+', default=[0, 1],
-    type=int,
-    help='Pivot indices - e.g. if langs=[de, en, fr], then training the de -> en pivot will require pivot_inds=(0, 1)'
-)
-train_parser.add_argument(
-    '--pivot_tokenizer_path', default=None, type=str,
-    help='Path to multilingual tokeniser for pivot training'
-)
-train_parser.add_argument(
-    '--auxiliary', action='store_true',
-    help="Use auxiliary loss on encoder output."
-)
-train_parser.add_argument(
-    '--frozen_layers', nargs='+', default=[],
-    type=int, help='Encoder layers frozen for grad wrt aux loss.'
-)
-train_parser.add_argument(
-    '--aux_strength', default=1.0, type=float,
-    help='Strength of auxiliary loss relative to main loss.'
-)
-train_parser.add_argument(
-    '--verbose', default=50, type=int,
-    help='Frequency to print batch results.'
-)
-train_parser.add_argument(
-    '--wandb', action='store_true',
-    help='Record the run in weights and biases.'
 )
 
