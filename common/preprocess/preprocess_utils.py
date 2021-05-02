@@ -7,7 +7,9 @@ from tokenizers.pre_tokenizers import Whitespace
 from tokenizers.processors import TemplateProcessing
 
 class _MultilingualIterator:
-    """ Simple iterator class to combine languages."""
+    """ Simple iterator class to combine languages.
+    langs : the column identifier for each language in the dataset.
+    e.g for Ted this is the langauge. for Ous it is lang0, lang1."""
 
     def __init__(self, dataset, langs):
         self.dataset = dataset
@@ -22,7 +24,7 @@ class _MultilingualIterator:
         return ''.join([x[lang] + ' ' for lang in self.langs])
 
 
-def train_tokenizer(langs, dataset, vocab_size):
+def train_tokenizer(langs, dataset, vocab_size, lang_columns=None):
     """Train a tokenizer on given list of languages.
     Reserves a special token for each language which is
     [LANG] where LANG is the language tag. These are assigned
@@ -43,7 +45,8 @@ def train_tokenizer(langs, dataset, vocab_size):
     tokenizer.pre_tokenizer = Whitespace()
 
     # create iterator and train
-    iterator = _MultilingualIterator(dataset, langs)
+    if lang_columns is None: lang_columns = langs
+    iterator = _MultilingualIterator(dataset, lang_columns)
     tokenizer.train_from_iterator(iterator, trainer)
 
     # post process start/end tokens
