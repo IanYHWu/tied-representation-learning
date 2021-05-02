@@ -15,7 +15,7 @@ def get_opus_pairs(langs, excluded=None):
     assert 'en' in langs
     langs = sorted(langs)
     langs_pre, langs_post = langs[:langs.index('en')], langs[langs.index('en')+1:]
-    pairs = [lang + '-en' for lang in langs_pre] + ['en-' + lang for lang in langs_pre]
+    pairs = [lang + '-en' for lang in langs_pre] + ['en-' + lang for lang in langs_post]
 
     # remove excluded
     if excluded is not None:
@@ -37,17 +37,17 @@ def load_from_pairs(pairs):
     """ construct an Opus100 dataset from translation pairs. """
 
     # load and map each pair to common columns
-    all = []
+    all_ = []
     for pair in pairs:
-    dataset = datasets.load_dataset('opus100', pair)
-    for k, v in dataset.values():
-        dataset[k] = v.map(map_fn, remove_columns=['translation'])
-    all.append(dataset)
+        dataset = datasets.load_dataset('opus100', pair)
+        for k, v in dataset.items():
+            dataset[k] = v.map(map_fn, remove_columns=['translation'])
+        all_.append(dataset)
 
     # concatenate each split
     all_datasets = {}
     for split in ['train', 'test', 'validation']:
-        all_datasets[split] = concatenate_datasets([dataset_[split] for dataset_ in all])
+        all_datasets[split] = concatenate_datasets([dataset_[split] for dataset_ in all_])
 
     return all_datasets
 
@@ -73,7 +73,7 @@ def preprocess(dataset, langs, batch_size=32, tokenizer=None, vocab_size=None, m
         if tokenizer is None:
             tokenizer = [train_tokenizer(
                 [lang], dataset, vocab_size, lang_columns=[l_col]
-                ) for lang, l_col in zip(lang, lang_columns)]
+                ) for lang, l_col in zip(langs, lang_columns)]
 
         def tokenize_fn(example):
             """apply tokenization"""
@@ -85,14 +85,16 @@ def preprocess(dataset, langs, batch_size=32, tokenizer=None, vocab_size=None, m
     dataset = dataset.map(tokenize_fn, remove_columns=lang_columns)
 
     # padding and convert to torch
-    cols = dataset.column_names # input_ids, lang
-    dataset.set_format(type='torch', columns=cols)
+    cols = ['input_ids_text0', 'input_ids_text1'] # input_ids, lang
+    dataset.set_format(type='torch', columns=cols, output_all_columns=True)
 
     def pad_seqs(examples):
         """Apply padding"""
-        ex_langs = list(zip(*[tuple(ex[col] for col in lang_columns) for ex in examples]))
-        ex_langs = tuple(pad_sequence(x, batch_first=True, max_len=max_len) for x in ex_langs)
-        return ex_langs
+        columns = cols + ['lang0', 'lang1']
+        x0, x1, lang0, lang1 = list(zip(*[[ex[col] for col in columns] for ex in examples]))
+        x0 = U.pad_sequence(x0, batch_first=True, max_len=max_len)
+        x1 = U.pad_sequence(x1, batch_first=True, max_len=max_len)
+        return x0, x1, lang0, lang1
 
     print("Dataset Size: {}".format(len(dataset)))
 
@@ -110,7 +112,8 @@ def preprocess(dataset, langs, batch_size=32, tokenizer=None, vocab_size=None, m
     else:
         dataloader = torch.utils.data.DataLoader(dataset,
                                                  batch_size=batch_size,
-                                                 collate_fn=pad_seqs)
+                                                 collate_fn=pad_seqs,
+                                                 shuffle=True)
 
     return dataloader, tokenizer
 
@@ -203,8 +206,8 @@ def load_opus100(langs, vocab_size, batch_size=32, mode='bilingual', tokenizer=N
     pairs = get_opus_pairs(langs, excluded=excluded)    
     all_datasets = load_from_pairs(pairs)
     train_dataset = all_datasets['train']
-    val_dataset = all_datasets['train']
-    test_dataset = all_datasets['train']
+    val_dataset = all_datasets['validation']
+    test_dataset = all_datasets['test']
 
     save_tokenizer = True if tokenizer is None else False
     multi = True if mode == 'multi' else False
@@ -213,10 +216,10 @@ def load_opus100(langs, vocab_size, batch_size=32, mode='bilingual', tokenizer=N
     train_dataloader, tokenizer = preprocess(train_dataset, langs, batch_size=batch_size,
         tokenizer=tokenizer, vocab_size=vocab_size, max_len=max_len, multi=multi,
         distributed=distributed, world_size=world_size, rank=rank)
-    val_dataloader, _ = preprocess(train_dataset, langs, batch_size=batch_size,
+    val_dataloader, _ = preprocess(val_dataset, langs, batch_size=batch_size,
         tokenizer=tokenizer, vocab_size=vocab_size, max_len=max_len, multi=multi,
         distributed=distributed, world_size=world_size, rank=rank)
-    test_dataloader, _ = preprocess(train_dataset, langs, batch_size=batch_size,
+    test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size,
         tokenizer=tokenizer, vocab_size=vocab_size, max_len=max_len, multi=multi,
         distributed=distributed, world_size=world_size, rank=rank)
 
@@ -228,6 +231,8 @@ def load_opus100(langs, vocab_size, batch_size=32, mode='bilingual', tokenizer=N
         else:
             tokenizer.save(path + '/multi_tokenizer.json')
 
+    '''
+
     # create dataloaders
     train_dataloader = TedMultiDataLoader(mode, langs, train_dataloader,
         tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=False, excluded=excluded)
@@ -235,6 +240,8 @@ def load_opus100(langs, vocab_size, batch_size=32, mode='bilingual', tokenizer=N
         tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=False, excluded=excluded)
     test_dataloader = TedMultiDataLoader(mode, langs, test_dataloader,
         tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=True, excluded=excluded)
+
+    '''
 
     return train_dataloader, val_dataloader, test_dataloader, tokenizer
 
