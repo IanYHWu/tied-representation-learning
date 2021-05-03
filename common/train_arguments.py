@@ -45,6 +45,10 @@ train_parser.add_argument(
     '--wandb', action='store_true',
     help='Record the run in weights and biases.'
 )
+train_parser.add_argument(
+    '--device', default='gpu', type=str,
+    help='Device to use for training (gpu or cpu'
+)
 
 ##### distributed training args
 train_parser.add_argument(
@@ -62,21 +66,6 @@ train_parser.add_argument(
 train_parser.add_argument(
     '--gpus', default=1, type=int,
     help='Number of gpus per node.'
-)
-
-##### pivot args
-train_parser.add_argument(
-    '--pivot', action='store_true',
-    help='Train a bilingual model that is part of a pivot'
-)
-train_parser.add_argument(
-    '--pivot_inds', nargs='+', default=[0, 1],
-    type=int,
-    help='Pivot indices - e.g. if langs=[de, en, fr], then training the de -> en pivot will require pivot_inds=(0, 1)'
-)
-train_parser.add_argument(
-    '--pivot_tokenizer_path', default=None, type=str,
-    help='Path to multilingual tokeniser for pivot training'
 )
 
 ##### auxiliary loss args

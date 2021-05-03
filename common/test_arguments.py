@@ -55,8 +55,20 @@ test_parser.add_argument(
     help='Test a multilingual pivot model'
 )
 test_parser.add_argument(
-    '--pivot_tokenizer_path', default=None, type=str,
-    help='Path to multilingual tokeniser for pivot testing'
+    '--pivot_tokenizer_path_1_1', default=None, type=str,
+    help='Path to bilingual tokeniser 1, language pair 1 for pivot testing'
+)
+test_parser.add_argument(
+    '--pivot_tokenizer_path_1_2', default=None, type=str,
+    help='Path to bilingual tokeniser 2, language pair 1 for pivot testing'
+)
+test_parser.add_argument(
+    '--pivot_tokenizer_path_2_1', default=None, type=str,
+    help='Path to bilingual tokeniser 1, language pair 2 for pivot testing'
+)
+test_parser.add_argument(
+    '--pivot_tokenizer_path_2_2', default=None, type=str,
+    help='Path to bilingual tokeniser 2, language pair 2 for pivot testing'
 )
 test_parser.add_argument(
     '--pivot_model_1', default=None, type=str,

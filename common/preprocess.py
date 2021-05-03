@@ -16,6 +16,7 @@ from tokenizers.models import BPE
 from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import Whitespace
 from tokenizers.processors import TemplateProcessing
+from common.utils import remove_after_stop
 
 
 def filter_languages(dataset, langs):
@@ -112,7 +113,7 @@ def pad_sequence(sequences, batch_first=False, padding_value=0.0, max_len = None
 
 
 def preprocess(dataset, langs, batch_size=32, tokenizer=None, vocab_size=None, max_len=None,
-    multi=False, distributed=False, world_size=None, rank=None):
+    multi=False, distributed=False, world_size=None, rank=None, load=True):
     """
     Applies full preprocessing to dataset: filtering, tokenization,
     padding and conversion to torch dataloader.
@@ -239,6 +240,70 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
     return train_dataloader, val_dataloader, test_dataloader, tokenizer
 
 
+def pivot_preprocess(dataset, langs, tokenizer_1, tokenizer_2, batch_size=32):
+
+    # filtering
+    dataset = filter_languages(dataset, langs)
+    dataset_1 = dataset.remove_columns(langs[2])
+    dataset_2 = dataset.remove_columns(langs[0])
+    langs_1 = [langs[0], langs[1]]
+    langs_2 = [langs[1], langs[2]]
+
+    def tokenize_fn_1(example):
+        """apply tokenization"""
+        l_tok = [tok.encode(example[l]) for tok, l in zip(tokenizer_1, langs_1)]
+        return {'input_ids_' + l: tok.ids for l, tok in zip(langs_1, l_tok)}
+
+    def tokenize_fn_2(example):
+        """apply tokenization"""
+        l_tok = [tok.encode(example[l]) for tok, l in zip(tokenizer_2, langs_2)]
+        return {'input_ids_' + l: tok.ids for l, tok in zip(langs_2, l_tok)}
+
+    dataset_1 = dataset_1.map(tokenize_fn_1)
+    dataset_2 = dataset_2.map(tokenize_fn_2)
+
+    # padding and convert to torch
+    cols_1 = ['input_ids_' + l for l in langs_1]
+    cols_2 = ['input_ids_' + l for l in langs_2]
+    dataset_1.set_format(type='torch', columns=cols_1)
+    dataset_2.set_format(type='torch', columns=cols_2)
+
+    def pad_seqs_1(examples):
+        """Apply padding"""
+        ex_langs = list(zip(*[tuple(ex[col] for col in cols_1) for ex in examples]))
+        ex_langs = tuple(pad_sequence(x, batch_first=True) for x in ex_langs)
+        return ex_langs
+
+    def pad_seqs_2(examples):
+        """Apply padding"""
+        ex_langs = list(zip(*[tuple(ex[col] for col in cols_2) for ex in examples]))
+        ex_langs = tuple(pad_sequence(x, batch_first=True) for x in ex_langs)
+        return ex_langs
+
+    print("Dataset Size: {}".format(len(dataset_1[langs[0]])))
+
+    dataloader_1 = torch.utils.data.DataLoader(dataset_1,
+                                             batch_size=batch_size,
+                                             collate_fn=pad_seqs_1)
+    dataloader_2 = torch.utils.data.DataLoader(dataset_2,
+                                               batch_size=batch_size,
+                                               collate_fn=pad_seqs_2)
+
+    return dataloader_1, dataloader_2
+
+
+def pivot_load_and_preprocess(langs, batch_size, dataset_name, tokenizer_1, tokenizer_2):
+
+    dataset = datasets.load_dataset(dataset_name)
+
+    test_dataset = dataset['test']
+
+    test_dataloader_1, test_dataloader_2 = \
+        pivot_preprocess(test_dataset, langs, tokenizer_1, tokenizer_2, batch_size=32)
+
+    return test_dataloader_1, test_dataloader_2
+
+
 def _detokenize(x, tokenizer, as_lists=True):
     """ Detokenize a batch of given tensors."""
     batch = True
@@ -280,6 +345,44 @@ def detokenize(x, tokenizer, as_lists=True):
             return [_detokenize(x_, tokenizer, as_lists=as_lists) for x_ in x]
     else:
         return _detokenize(x, tokenizer, as_lists=as_lists)
+
+
+def _tokenize(x, tokenizer):
+    """ Tokenize a list of lists."""
+    x = remove_after_stop(x)
+    x = " ".join(x)
+    tok = tokenizer.encode(x).ids
+    return tok
+
+
+def tokenize(x, tokenizer):
+    """
+    Tokenize a given batch of sequences of words (or
+    a list of batches of sequences of words).
+    x : int torch.tensors (or list of) - shape (batch, seq_len)
+    tokenizer : tokenizers.Tokenizer
+    as_list : bool - return as list or string
+
+    Returns:
+    if as_list is True then returns a list of the tokenized sequences
+    as a list of tokens. If as_list if False then the list consists of strings.
+    If a list of batches is passed then the return is a list of the tokenized
+    batches.
+    """
+    detok_list = [_tokenize(x_, tokenizer) for x_ in x]
+    max_len = 0
+    for i in detok_list:
+        if len(i) > max_len:
+            max_len = len(i)
+    tensor_list = []
+    for i in detok_list:
+        if len(i) < max_len:
+            pad_len = max_len - len(i)
+            padding = [0 for i in range(0, pad_len)]
+            i += padding
+        tensor_list.append(torch.tensor(i))
+    detok_tensor = torch.stack(tensor_list)
+    return detok_tensor
 
 
 class AddTargetTokens:

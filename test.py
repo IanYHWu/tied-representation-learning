@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import numpy as np 
 import time
 from tokenizers import Tokenizer
+from common.preprocess import detokenize, tokenize
 from models import base_transformer
 from models import initialiser
 from common import data_logger as logging
@@ -80,7 +81,6 @@ def inference_step(x, y, model, logger, tokenizer, device, bleu=None,
     x: source language
     y: target language
     """
-
     if teacher_forcing:
         y_inp, y_tar = y[:, :-1], y[:, 1:]
         enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
@@ -118,16 +118,14 @@ def inference_step(x, y, model, logger, tokenizer, device, bleu=None,
         else:
             y_pred = beam_search(x, y, y_tar, model, enc_mask=enc_mask, beam_length=beam_length)
 
-        # loss and metrics
         if not pivot_mode:
             batch_acc = 0
-            # batch_acc = accuracy_fn(y_pred, y_tar)
             if bleu is not None:
                 bleu(y_pred, y_tar)
             logger.log_examples(x, y_tar, y_pred, tokenizer)
             return batch_acc
         else:
-            return torch.argmax(y_pred, axis=-1)
+            return y_pred
 
 
 def test(device, params, test_dataloader, tokenizer, verbose=50):
@@ -148,7 +146,6 @@ def test(device, params, test_dataloader, tokenizer, verbose=50):
     start_ = time.time()
 
     print(params.__dict__)
-
     print("Now testing")
     for i, data in enumerate(test_dataloader):
 
@@ -195,7 +192,6 @@ def multi_test(device, params, test_dataloader, tokenizer, verbose=50):
     start_ = time.time()
 
     print(params.__dict__)
-
     print("Now testing")
     for i, data in enumerate(test_dataloader):
 
@@ -204,8 +200,8 @@ def multi_test(device, params, test_dataloader, tokenizer, verbose=50):
             x = add_targets(x, y_lang)
             bleu = pair_bleus[direction]
             test_batch_acc = inference_step(x, y, model, logger, tokenizer, device, bleu=bleu,
-                                        teacher_forcing=params.teacher_forcing,
-                                        beam_length=params.beam_length)
+                                            teacher_forcing=params.teacher_forcing,
+                                            beam_length=params.beam_length)
             pair_accs[direction] += (test_batch_acc - pair_accs[direction]) / (i + 1)
 
         # report the mean accuracy and bleu accross directions
@@ -223,7 +219,7 @@ def multi_test(device, params, test_dataloader, tokenizer, verbose=50):
     logger.dump_examples()
 
 
-def pivot_test(device, params, test_dataloader, tokenizer, verbose=50):
+def pivot_test(device, params, test_dataloader_1, test_dataloader_2, tokenizer_1, tokenizer_2, verbose=50):
     logger = logging.TestLogger(params)
     logger.make_dirs()
     train_params = logging.load_params(params.location + '/' + params.name)
@@ -243,19 +239,18 @@ def pivot_test(device, params, test_dataloader, tokenizer, verbose=50):
     test_acc = 0.0
     start_ = time.time()
 
-    for i, data in enumerate(test_dataloader):
-        x_1, y_1, y_2 = data[0], data[1], data[2]
+    for i, (data_1, data_2) in enumerate(zip(test_dataloader_1, test_dataloader_2)):
+        x_1, y_1 = data_1
+        x_2, y_2 = data_2
 
-        y_pred_1 = inference_step(x_1, y_1, model_1, logger, tokenizer, device,
+        y_pred_1 = inference_step(x_1, y_1, model_1, logger, tokenizer_1, device,
                                   teacher_forcing=params.teacher_forcing, pivot_mode=True)
-
-        test_batch_acc = inference_step(y_pred_1, y_2, model_2, logger, tokenizer, device, bleu=bleu,
-                                        teacher_forcing=params.teacher_forcing,
-                                        beam_length=params.beam_length,
-                                        pivot_mode=False)
+        y_pred_det = detokenize(y_pred_1, tokenizer_1[1])
+        y_pred_tok = tokenize(y_pred_det, tokenizer_2[0])
+        test_batch_acc = inference_step(y_pred_tok, y_2, model_2, logger, tokenizer_2, device,
+                                        teacher_forcing=params.teacher_forcing, pivot_mode=False, bleu=bleu)
 
         test_batch_accs.append(test_batch_acc)
-
         test_acc += (test_batch_acc - test_acc) / (i + 1)
         curr_bleu = bleu.get_metric()
 
@@ -265,7 +260,7 @@ def pivot_test(device, params, test_dataloader, tokenizer, verbose=50):
                     i, test_acc, curr_bleu, (time.time() - start_) / (i + 1)))
 
     test_bleu = bleu.get_metric()
-    direction = params.langs[0] + '-' + params.langs[1] + '-' + params.langs[2]
+    direction = "pivot"
     logger.log_results([direction, test_acc, test_bleu])
     logger.dump_examples()
 
@@ -306,15 +301,24 @@ def main(params):
 
     elif len(params.langs) > 2 and params.pivot:
         try:
-            tokenizer = Tokenizer.from_file(params.pivot_tokenizer_path)
+            tokenizer_1_1 = Tokenizer.from_file(params.pivot_tokenizer_path_1_1)
+            tokenizer_1_2 = Tokenizer.from_file(params.pivot_tokenizer_path_1_2)
+            tokenizer_2_1 = Tokenizer.from_file(params.pivot_tokenizer_path_2_1)
+            tokenizer_2_2 = Tokenizer.from_file(params.pivot_tokenizer_path_2_2)
+            tokenizer_1 = [tokenizer_1_1, tokenizer_1_2]
+            tokenizer_2 = [tokenizer_2_1, tokenizer_2_2]
         except:
-            tokenizer = None
+            tokenizer_1 = None
+            tokenizer_2 = None
 
-        train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
-            params.langs, params.batch_size, params.vocab_size, params.dataset,
-            tokenizer=tokenizer, multi=True)
+        test_dataloader_1, test_dataloader_2 = preprocess.pivot_load_and_preprocess(params.langs,
+                                                                                    params.batch_size,
+                                                                                    params.dataset,
+                                                                                    tokenizer_1=tokenizer_1,
+                                                                                    tokenizer_2=tokenizer_2)
 
-        pivot_test(device, params, test_dataloader, tokenizer, verbose=params.verbose)
+        pivot_test(device, params, test_dataloader_1, test_dataloader_2, tokenizer_1, tokenizer_2,
+                   verbose=params.verbose)
 
 
 if __name__ == "__main__":

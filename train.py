@@ -23,6 +23,7 @@ from hyperparams.schedule import WarmupDecay
 from common.metrics import BLEU
 from common.utils import to_devices, accuracy_fn, loss_fn, auxiliary_loss_fn, sample_direction, get_direction
 
+
 def seed_all(SEED):
     """ Set the seed for all devices. """
     torch.cuda.manual_seed_all(SEED)
@@ -154,15 +155,11 @@ def setup(params):
 
 
 def train(rank, device, logger, params, train_dataloader, val_dataloader=None, tokenizer=None,
-    verbose=50, pivot=False, pivot_pair_ind=(0, 1)):
-    """Training Loop
-    For training a bilingual model as part of a pivot:
-        use pivot=True, and multilingual dataloaders.
-        specify the pivot pair in pivot_pair_ind
-    """
+    verbose=50):
+    """Training Loop"""
 
     multi = False
-    if len(params.langs) > 2 and not pivot:
+    if len(params.langs) > 2:
         assert tokenizer is not None
         multi = True
         add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
@@ -204,8 +201,6 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
                 # sample a tranlsation direction and add target tokens
                 (x, y), (x_lang, y_lang) = sample_direction(data, params.langs)
                 x = add_targets(x, y_lang)
-            elif pivot:
-                x, y = get_direction(data, pivot_pair_ind[0], pivot_pair_ind[1])
             else:
                 x, y = data
 
@@ -237,7 +232,6 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
 
         # val only on rank 0
         if rank == 0:
-
             val_epoch_loss = 0.0
             val_epoch_acc = 0.0
             val_bleu = 0.0
@@ -249,13 +243,11 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
                         # sample a tranlsation direction and add target tokens
                         (x, y), (x_lang, y_lang) = sample_direction(data, params.langs)
                         x = add_targets(x, y_lang)
-                    elif pivot:
-                        x, y = get_direction(data, pivot_pair_ind[0], pivot_pair_ind[1])
                     else:
                         x, y = data
 
                     batch_loss, batch_acc = val_step(x, y, model, criterion, bleu, device,
-                        distributed=params.distributed)
+                                                     distributed=params.distributed)
 
                     batch_loss = batch_loss.item()
                     batch_acc = batch_acc.item()
@@ -298,7 +290,10 @@ def main(gpu, params):
     seed_all(SEED)
 
     # get gpu device
-    device = torch.device(gpu)
+    if params.device == 'gpu':
+        device = torch.device(gpu)
+    else:
+        device = 'cpu'
 
     # only wandb on main process
     if rank == 0 and params.wandb:
@@ -308,7 +303,7 @@ def main(gpu, params):
     logger = setup(params)
 
     # load data and train for required experiment
-    if len(params.langs) == 2 and not params.pivot:
+    if len(params.langs) == 2:
         # bilingual translation
 
         # load tokenizers if continuing
@@ -323,9 +318,9 @@ def main(gpu, params):
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False, path=logger.root_path,
             tokenizer=tokenizers, distributed=params.distributed, world_size=params.world_size, rank=rank)
 
-        train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, verbose=params.verbose)
+        train(rank, device, logger, params, test_dataloader, val_dataloader=val_dataloader, verbose=params.verbose)
 
-    elif len(params.langs) > 2 and not params.pivot:
+    elif len(params.langs) > 2:
         # multilingual translation
 
         # load tokenizers if continuing
@@ -341,27 +336,13 @@ def main(gpu, params):
         train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
               verbose=params.verbose)
 
-    elif len(params.langs) > 2 and params.pivot:
-        # pivot translation
-
-        if params.pivot_tokenizer_path:
-            tokenizer = Tokenizer.from_file(params.pivot_tokenizer_path)
-        else:
-            tokenizer = None
-
-        train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
-            params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path,
-            distributed=params.distributed, world_size=params.world_size, rank=rank, tokenizer=tokenizer)
-
-        train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
-              verbose=params.verbose, pivot=True, pivot_pair_ind=params.pivot_inds)
-
     else:
         raise NotImplementedError
 
     # end wanb process to avoid hanging
     if rank == 0 and params.wandb:
         wandb.finish()
+
 
 def run_distributed(params):
     params.world_size = params.gpus * params.nodes
@@ -373,10 +354,10 @@ def run_distributed(params):
         sys.exit(1)
     mp.spawn(main, nprocs=params.gpus, args=(params,))
 
+
 if __name__ == "__main__":
 
     args = train_parser.parse_args()
-
     # Loader can also take in any dictionary of parameters
     params = Loader(args, check_custom=True)
     if params.distributed:

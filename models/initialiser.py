@@ -15,9 +15,5 @@ def initialise_model(params, device):
     return model
 
 
-def initialise_optimiser(params):
-    # custom initialiser for the optimiser - use for L.R. schedule
-    pass
-
 
 

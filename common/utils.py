@@ -118,7 +118,30 @@ def mask_after_stop(input_tensor, stop_token):
     return output_tensor
 
 
-if __name__ == '__main__':
-    a = torch.tensor([[1, 3, 4, 6, 2, 8, 8, 8], [4, 3, 2, 8, 8, 8, 8, 8], [1, 5, 6, 7, 4, 8, 9, 4]])
-    print(mask_after_stop(a, stop_token=2))
+def remove_after_stop(sentence):
+    try:
+        end_index = sentence.index('.')
+    except ValueError:
+        end_index = None
+    if end_index is not None:
+        if len(sentence) > end_index + 1:
+            sentence = sentence[:end_index + 1]
+
+    return sentence
+
+
+if __name__ == "__main__":
+    print(remove_after_stop(["."]))
+
+
+
+
+
+
+
+
+
+
+
+
 
