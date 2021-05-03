@@ -120,12 +120,12 @@ def preprocess(dataset, langs, batch_size=32, tokenizer=None, vocab_size=None, m
 
 class Opus100DataLoader:
     """
-    Creats a dataloader for opus dataset for a given mode.
+    Creates a dataloader for opus dataset for a given mode.
 
     Mode behaviours:
         bilingual: always returns x, y as source, target.
 
-        multi: during tarining samples a direction and returns
+        multi: during training samples a direction and returns
         source, target, source language and target language. If
         testing then returns a dict of all generated translation
         pairs.
@@ -133,20 +133,11 @@ class Opus100DataLoader:
         pivot: returns the directions required for pivot training.
     """
 
-
-
-
-
-
-
-    ############## incomplete from here #################
-
-    def __init__(self, mode, langs, dataloader, tokenizer=None, pivot_pair_ind=None, test=False, excluded=None):
+    def __init__(self, mode, langs, dataloader, tokenizer=None, pivot_pair_ind=None, test=False):
         self.mode = mode 
         self.langs = langs 
         self.dataloader = dataloader
-        self.test = test 
-        self.excluded = excluded
+        self.test = test
         self.tokenizer = tokenizer
 
         if self.mode == 'pivot':
@@ -162,45 +153,34 @@ class Opus100DataLoader:
         return self
 
     def __next__(self):
-        data = next(self.iterator)
+        x, y, x_lang, y_lang = next(self.iterator)
 
         if self.mode == 'bilingual':
-            return data
+            return x, y
         
         elif self.mode == 'multi':
             return self.get_multi(data)
        
         elif self.mode == 'pivot':
-            x, y = get_direction(data, self.pivot_pair0, self.pivot_pair1, excluded=self.excluded)
-            return x, y
+            raise NotImplementedError
         
         else:
             raise NotImplementedError
 
     def get_multi(self, data):
         if self.test:
-            # gets all directions and adds target tokens
-            data = get_directions(data, self.langs, excluded=self.excluded)
-            for direction, (x, y, y_lang) in data.items():
-                x = self.add_targets(x, y_lang)
-                data[direction] = (x, y, y_lang)
-            return data
+            raise NotImplementedError
         else:
-            # sample a tranlsation direction and add target tokens
+            # combine both translation directions add add targets
             (x, y), (x_lang, y_lang) = sample_direction(data, self.langs, excluded=self.excluded)
-            x = self.add_targets(x, y_lang)
-            return x, y
+            x_comb, y_comb = torch.cat([x, y], dim=0), torch.cat([y, x], dim=0)
+            x_comb = self.add_targets(x_comb, y_lang + x_lang)
+            return x_comb, y_comb
 
-
-
-
-
-
-            ############## incomplete from here #################
 
 def load_opus100(langs, vocab_size, batch_size=32, mode='bilingual', tokenizer=None,
     pivot_pair_ind=None, max_len=None, path=None, distributed=False,
-    world_size=None, rank=None, excluded=None):
+    world_size=None, rank=None, excluded=None, test_only=False):
     
     # load datasets and concatenate
     pairs = get_opus_pairs(langs, excluded=excluded)    
@@ -209,39 +189,62 @@ def load_opus100(langs, vocab_size, batch_size=32, mode='bilingual', tokenizer=N
     val_dataset = all_datasets['validation']
     test_dataset = all_datasets['test']
 
-    save_tokenizer = True if tokenizer is None else False
     multi = True if mode == 'multi' else False
 
-    # tokenize and dataloaders
-    train_dataloader, tokenizer = preprocess(train_dataset, langs, batch_size=batch_size,
-        tokenizer=tokenizer, vocab_size=vocab_size, max_len=max_len, multi=multi,
-        distributed=distributed, world_size=world_size, rank=rank)
-    val_dataloader, _ = preprocess(val_dataset, langs, batch_size=batch_size,
-        tokenizer=tokenizer, vocab_size=vocab_size, max_len=max_len, multi=multi,
-        distributed=distributed, world_size=world_size, rank=rank)
-    test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size,
-        tokenizer=tokenizer, vocab_size=vocab_size, max_len=max_len, multi=multi,
-        distributed=distributed, world_size=world_size, rank=rank)
+    if mode == 'pivot':
+        raise NotImplementedError
 
-    # save tokenizers if trained
-    if (path is not None) and save_tokenizer:
-        if isinstance(tokenizer, list):
-            for tok, lang in zip(tokenizer, langs):
-                tok.save(path + '/' + lang + '_tokenizer.json')
+    if not test_only:
+
+        save_tokenizer = True if tokenizer is None else False
+        
+        if multi:
+            train_batch_size = batch_size // 2
         else:
-            tokenizer.save(path + '/multi_tokenizer.json')
+            train_batch_size = batch_size
 
-    '''
+        # tokenize and dataloaders
+        train_dataloader, tokenizer = preprocess(train_dataset, langs, batch_size=train_batch_size,
+            tokenizer=tokenizer, vocab_size=vocab_size, max_len=max_len, multi=multi,
+            distributed=distributed, world_size=world_size, rank=rank)
+        val_dataloader, _ = preprocess(val_dataset, langs, batch_size=batch_size,
+            tokenizer=tokenizer, vocab_size=vocab_size, max_len=max_len, multi=multi,
+            distributed=distributed, world_size=world_size, rank=rank)
+        test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size,
+            tokenizer=tokenizer, vocab_size=vocab_size, max_len=max_len, multi=multi,
+            distributed=distributed, world_size=world_size, rank=rank)
 
-    # create dataloaders
-    train_dataloader = TedMultiDataLoader(mode, langs, train_dataloader,
-        tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=False, excluded=excluded)
-    val_dataloader = TedMultiDataLoader(mode, langs, val_dataloader,
-        tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=False, excluded=excluded)
-    test_dataloader = TedMultiDataLoader(mode, langs, test_dataloader,
-        tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=True, excluded=excluded)
+        # save tokenizers if trained
+        if (path is not None) and save_tokenizer:
+            if isinstance(tokenizer, list):
+                for tok, lang in zip(tokenizer, langs):
+                    tok.save(path + '/' + lang + '_tokenizer.json')
+            else:
+                tokenizer.save(path + '/multi_tokenizer.json')
 
-    '''
+        # create dataloaders
+        train_dataloader = Opus100DataLoader(mode, langs, train_dataloader,
+            tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=False)
+        val_dataloader = Opus100DataLoader(mode, langs, val_dataloader,
+            tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=False)
+        test_dataloader = Opus100DataLoader(mode, langs, test_dataloader,
+            tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=True)
 
-    return train_dataloader, val_dataloader, test_dataloader, tokenizer
+        return train_dataloader, val_dataloader, test_dataloader, tokenizer
+
+    else:
+
+        if tokenizer is None:
+            print('Tokenizer required for test only.')
+            raise ValueError
+
+        test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size,
+            tokenizer=tokenizer, vocab_size=vocab_size, max_len=max_len, multi=multi,
+            distributed=distributed, world_size=world_size, rank=rank)
+        test_dataloader = Opus100DataLoader(mode, langs, test_dataloader,
+            tokenizer=tokenizer, pivot_pair_ind=pivot_pair_ind, test=True)
+
+        return test_dataloader
+
+
 
