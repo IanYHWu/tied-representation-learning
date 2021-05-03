@@ -51,6 +51,14 @@ _train_parser.add_argument(
     '--wandb', action='store_true',
     help='Record the run in weights and biases.'
 )
+_train_parser.add_argument(
+    '--tokenizer', nargs='+', default=None,
+    type=str, help='Tokenizer(s) in pretrained to use.'
+)
+_train_parser.add_argument(
+    '--max_len', default=None,
+    type=int, help='Clip sequences to maximum length.'
+)
 
 ##### distributed training args
 _train_parser.add_argument(

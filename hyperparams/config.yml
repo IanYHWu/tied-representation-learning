@@ -54,3 +54,16 @@ hs_model_small:
   epochs: 15
   warmup_steps: 4000
   lr_scale: 1.0
+
+main:
+  model: base
+  vocab_size: 30000
+  batch_size: 32
+  layers: 4
+  heads: 4
+  dff: 1024
+  d_model: 256
+  max_pe: 1500
+  dropout: 0.1
+  warmup_steps: 5000
+  lr_scale: 1.0
