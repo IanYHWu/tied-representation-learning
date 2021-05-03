@@ -1,4 +1,5 @@
 import torch 
+import numpy as np 
 import datasets
 from datasets import concatenate_datasets
 
@@ -92,8 +93,8 @@ def preprocess(dataset, langs, batch_size=32, tokenizer=None, vocab_size=None, m
         """Apply padding"""
         columns = cols + ['lang0', 'lang1']
         x0, x1, lang0, lang1 = list(zip(*[[ex[col] for col in columns] for ex in examples]))
-        x0 = U.pad_sequence(x0, batch_first=True, max_len=max_len)
-        x1 = U.pad_sequence(x1, batch_first=True, max_len=max_len)
+        x0 = pad_sequence(x0, batch_first=True, max_len=max_len)
+        x1 = pad_sequence(x1, batch_first=True, max_len=max_len)
         return x0, x1, lang0, lang1
 
     print("Dataset Size: {}".format(len(dataset)))
@@ -159,7 +160,7 @@ class Opus100DataLoader:
             return x, y
         
         elif self.mode == 'multi':
-            return self.get_multi(data)
+            return self.get_multi(x, y, x_lang, y_lang)
        
         elif self.mode == 'pivot':
             raise NotImplementedError
@@ -167,15 +168,17 @@ class Opus100DataLoader:
         else:
             raise NotImplementedError
 
-    def get_multi(self, data):
+    def get_multi(self, x, y, x_lang, y_lang):
         if self.test:
             raise NotImplementedError
         else:
-            # combine both translation directions add add targets
-            (x, y), (x_lang, y_lang) = sample_direction(data, self.langs, excluded=self.excluded)
-            x_comb, y_comb = torch.cat([x, y], dim=0), torch.cat([y, x], dim=0)
-            x_comb = self.add_targets(x_comb, y_lang + x_lang)
-            return x_comb, y_comb
+            # randomly sample a direction
+            if np.random.rand() > 0.5:
+                x = self.add_targets(x, list(y_lang))
+                return x, y 
+            else:
+                y = self.add_targets(y, list(x_lang))
+                return y, x
 
 
 def load_opus100(langs, vocab_size, batch_size=32, mode='bilingual', tokenizer=None,
@@ -198,13 +201,8 @@ def load_opus100(langs, vocab_size, batch_size=32, mode='bilingual', tokenizer=N
 
         save_tokenizer = True if tokenizer is None else False
         
-        if multi:
-            train_batch_size = batch_size // 2
-        else:
-            train_batch_size = batch_size
-
         # tokenize and dataloaders
-        train_dataloader, tokenizer = preprocess(train_dataset, langs, batch_size=train_batch_size,
+        train_dataloader, tokenizer = preprocess(train_dataset, langs, batch_size=batch_size,
             tokenizer=tokenizer, vocab_size=vocab_size, max_len=max_len, multi=multi,
             distributed=distributed, world_size=world_size, rank=rank)
         val_dataloader, _ = preprocess(val_dataset, langs, batch_size=batch_size,

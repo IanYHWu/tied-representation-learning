@@ -291,31 +291,31 @@ def main(gpu, params):
         # load tokenizers if continuing
         if params.checkpoint:
             tokenizers = []
-            for lang in params.langs:
-                tokenizers.append(Tokenizer.from_file(logger.root_path + '/' + lang + '_tokenizer.json'))
+            for tok_path, lang in zip(params.tokenizer, params.langs):
+                tokenizers.append(Tokenizer.from_file('pretrained/' + tok_path + '.json'))
         else:
             tokenizers = None
 
         train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
             params.dataset, params.langs, params.vocab_size, batch_size=params.batch_size, mode='bilingual',
-            path=logger.root_path, pivot_pair_ind=None, tokenizer=tokenizers, distributed=params.distributed,
-            world_size=params.world_size, rank=rank, excluded=params.excluded)
+            path=logger.root_path, pivot_pair_ind=None, max_len=params.max_len, tokenizer=tokenizers,
+            distributed=params.distributed, world_size=params.world_size, rank=rank, excluded=params.excluded)
 
         train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, verbose=params.verbose)
 
     elif len(params.langs) > 2 and not params.pivot:
         # multilingual translation
 
-        # load tokenizers if continuing
-        if params.checkpoint:
-            tokenizer = Tokenizer.from_file(logger.root_path + '/multi_tokenizer.json')
+        if params.tokenizer is not None:
+            tokenizer = Tokenizer.from_file('pretrained/' + params.tokenizer[0] + '.json')
+            params.vocab_size = tokenizer.get_vocab_size()
         else:
             tokenizer = None
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
             params.dataset, params.langs, params.vocab_size, batch_size=params.batch_size, mode='multi',
-            path=logger.root_path, pivot_pair_ind=None, tokenizer=tokenizer, distributed=params.distributed,
-            world_size=params.world_size, rank=rank, excluded=params.excluded)
+            path=logger.root_path, pivot_pair_ind=None, max_len=params.max_len, tokenizer=tokenizer,
+            distributed=params.distributed, world_size=params.world_size, rank=rank, excluded=params.excluded)
 
         train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
               verbose=params.verbose)
@@ -330,8 +330,9 @@ def main(gpu, params):
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
             params.dataset, params.langs, params.vocab_size, batch_size=params.batch_size, mode='pivot',
-            path=logger.root_path, pivot_pair_ind=params.pivot_pair_ind, tokenizer=tokenizer, distributed=params.distributed,
-            world_size=params.world_size, rank=rank, excluded=params.excluded)
+            path=logger.root_path, pivot_pair_ind=params.pivot_pair_ind, max_len=params.max_len,
+            tokenizer=tokenizer, distributed=params.distributed, world_size=params.world_size,
+            rank=rank, excluded=params.excluded)
 
         train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, tokenizer=tokenizer,
               verbose=params.verbose, pivot=True, pivot_pair_ind=params.pivot_inds)
