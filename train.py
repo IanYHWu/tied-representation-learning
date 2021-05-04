@@ -345,13 +345,22 @@ def main(gpu, params):
         wandb.finish()
 
 def run_distributed(params):
+
+    if params.gpus == -1: # detect number of gpus
+        try:
+            params.gpus = os.environ['NUM_GPUS']
+        except KeyError:
+            print('Number of GPUs needs to be set to detect.')
+            sys.exit(1)
     params.world_size = params.gpus * params.nodes
-    try:
+
+    try: # check other environment variables
         os.environ['MASTER_ADDR']
         os.environ['MASTER_PORT']
     except KeyError:
         print('Missing environment variable.')
         sys.exit(1)
+        
     mp.spawn(main, nprocs=params.gpus, args=(params,))
 
 if __name__ == "__main__":
