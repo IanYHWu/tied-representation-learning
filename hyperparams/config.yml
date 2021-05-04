@@ -58,7 +58,6 @@ hs_model_small:
 main:
   model: base
   vocab_size: 30000
-  batch_size: 32
   layers: 4
   heads: 4
   dff: 1024
