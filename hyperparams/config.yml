@@ -66,3 +66,4 @@ main:
   dropout: 0.1
   warmup_steps: 5000
   lr_scale: 1.0
+  max_len: 300

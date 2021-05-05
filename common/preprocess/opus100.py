@@ -78,7 +78,7 @@ def preprocess(dataset, langs, batch_size=32, tokenizer=None, vocab_size=None, m
 
         def tokenize_fn(example):
             """apply tokenization"""
-            l_tok = [tok.encode(example[l]) for tok, l in zip(tokenizer, langs)]
+            l_tok = [tok.encode(example[l]) for tok, l in zip(tokenizer, lang_columns)]
             for l, tok in zip(lang_columns, l_tok):
                 example['input_ids_' + l] = tok.ids 
             return example

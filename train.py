@@ -346,9 +346,6 @@ def main(gpu, params):
 
 def run_distributed(params):
 
-    if params.gpus == -1: # detect number of gpus
-        params.gpus = torch.cuda.device_count()
-        print('Num gpus:', params.gpus)
     params.world_size = params.gpus * params.nodes
 
     try: # check other environment variables
