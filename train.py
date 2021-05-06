@@ -325,7 +325,7 @@ def main(gpu, params):
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False, path=logger.root_path,
             tokenizer=tokenizers, distributed=params.distributed, world_size=params.world_size, rank=rank)
 
-        train(rank, device, logger, params, test_dataloader, val_dataloader=val_dataloader, verbose=params.verbose)
+        train(rank, device, logger, params, train_dataloader, val_dataloader=val_dataloader, verbose=params.verbose)
 
     elif len(params.langs) > 2:
         # multilingual translation
