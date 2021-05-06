@@ -38,6 +38,40 @@ def greedy_search(x, y, y_tar, model, enc_mask=None):
     return torch.cat(y_pred, dim=1)
 
 
+def single_beam_search(x, y, model, enc_mask=None, beam_length=2, max_len=0):
+    """
+    x : (seq_len)
+    y : ([]) tensor of start token
+    max_len maximum length greater than the length of x to consider
+    """
+
+    x_enc = model.encoder(x.unsqueeze(0), enc_mask.unsqueeze(0)) # (1, seq_len, d_model)
+    x_enc = x_enc.repeat(beam_length, 1, 1) # (beam, seq_len, d_model)
+    decode = lambda y: F.log_softmax(model.final_layer(model.decoder(y, x_enc, None, None)[0]), dim=-1)
+
+    y = y.reshape(1, 1).repeat(beam_length, 1) # (beam, 1)
+    log_p = torch.zeros(beam_length).to(y.device)
+
+    for t in range(x.size(0)+max_len):
+        with torch.no_grad():
+
+            # expand beams
+            y_pred = decode(y)[:, -1, :] # (beam, vocab)
+            new_log_p = (log_p.unsqueeze(-1) + y_pred).reshape(-1) # (beam * vocab)
+
+            # trim beams
+            log_p, beam_idxs = torch.topk(new_log_p, beam_length) # (beam,)
+            beam_id, new_token = beam_idxs % beam_length, beam_idxs // beam_length
+
+            # update input
+            y = torch.cat([y[beam_id], new_token.unsqueeze(-1)], dim=-1)
+
+    best_beam = log_p.argmax()
+    y = y[best_beam]
+
+    return y[1:]
+    
+
 def beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2):
     """Inference loop exploring the n most probable paths at each step."""
     x_enc = model.encoder(x, enc_mask).unsqueeze(1).repeat(1, beam_length, 1, 1)
