@@ -199,7 +199,7 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
 
             if multi:
                 # sample a tranlsation direction and add target tokens
-                (x, y), (x_lang, y_lang) = sample_direction(data, params.langs, excluded=params.excluded))
+                (x, y), (x_lang, y_lang) = sample_direction(data, params.langs, excluded=params.excluded)
                 x = add_targets(x, y_lang)
             else:
                 x, y = data
@@ -334,7 +334,7 @@ def main(gpu, params):
         if params.checkpoint:
             tokenizer = Tokenizer.from_file(logger.root_path + '/multi_tokenizer.json')
         else:
-            if params.tokeniser is not None:
+            if params.tokenizer is not None:
                 tokenizer = Tokenizer.from_file('pretrained/' + params.tokenizer + '.json')
             else:
                 tokenizer = None
