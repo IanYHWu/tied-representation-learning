@@ -54,6 +54,17 @@ _test_parser.add_argument(
     '--tokenizer', nargs='+', default=None,
     type=str, help='Tokenizer(s) in pretrained to use.'
 )
+_train_parser.add_argument(
+    '--max_len', default=None,
+    type=int, help='Clip sequences to maximum length.'
+)
+_train_parser.add_argument(
+    '--excluded', nargs='+', default=[],
+    type=str, help='Pairs of languages to exclude\
+    from training. Should be passed as a list which\
+    is converted to a list of tuples. E.g. to exclude\
+    en-fr and en-de pass en fr en de.'
+)
 _test_parser.add_argument(
     '--pivot', action='store_true',
     help='Test a multilingual pivot model'

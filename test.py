@@ -280,7 +280,7 @@ def main(params):
 
         train_dataloader, val_dataloader, test_dataloader, tokenizers = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset,
-            tokenizer=tokenizers, multi=False, excluded=params.excluded)
+            tokenizer=tokenizers, multi=False)
 
         test(device, params, test_dataloader, tokenizers, verbose=params.verbose)
 
@@ -294,7 +294,7 @@ def main(params):
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset,
-            tokenizer=tokenizer, multi=True, excluded=params.excluded)
+            tokenizer=tokenizer, multi=True)
 
         multi_test(device, params, test_dataloader, tokenizer, verbose=params.verbose)
 
