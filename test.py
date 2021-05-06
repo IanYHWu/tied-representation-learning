@@ -291,7 +291,7 @@ def main(params):
     elif len(params.langs) > 2 and not params.pivot:
         # multilingual translation
         #  check for existing tokenizers
-        if params.tokenizer is None:
+        if params.tokenizer is not None:
             tokenizer = Tokenizer.from_file('pretrained/' + params.tokenizer + '.json')
         else:
             try:
