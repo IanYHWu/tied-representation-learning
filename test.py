@@ -276,7 +276,11 @@ def main(params):
         if params.tokenizer is not None:
             tokenizers = [Tokenizer.from_file('pretrained/' + tok + '.json') for tok in params.tokenizer]
         else:
-            tokenizers = None
+            try:
+                tokenizers = [Tokenizer.from_file(params.location + '/' + lang + '_tokenizer.json') for lang in
+                          params.langs]
+            except:
+                tokenizers = None
 
         train_dataloader, val_dataloader, test_dataloader, tokenizers = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset,
@@ -287,10 +291,13 @@ def main(params):
     elif len(params.langs) > 2 and not params.pivot:
         # multilingual translation
         #  check for existing tokenizers
-        try:
+        if params.tokenizer is None:
             tokenizer = Tokenizer.from_file('pretrained/' + params.tokenizer + '.json')
         else:
-            tokenizer = None
+            try:
+                tokenizer = Tokenizer.from_file(params.location + '/multi_tokenizer.json')
+            except:
+                tokenizer = None
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset,
