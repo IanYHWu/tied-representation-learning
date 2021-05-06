@@ -328,9 +328,8 @@ def main(params):
 
 
 if __name__ == "__main__":
-    #args = test_parser.parse_args()
+    args = test_parser.parse_args()
 
     # Loader can also take in any dictionary of parameters
-    #params = Loader(args, check_custom=True)
-    #main(params)
-    print(1)
+    params = Loader(args, check_custom=True)
+    main(params)
