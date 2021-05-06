@@ -183,7 +183,7 @@ def multi_test(device, params, test_dataloader, tokenizer, verbose=50):
     add_targets = preprocess.AddTargetTokens(params.langs, tokenizer)
     pair_accs = {s+'-'+t : 0.0 for s, t in get_pairs(params.langs)}
     pair_bleus = {}
-    for s, t in get_pairs(params.langs):
+    for s, t in get_pairs(params.langs, excluded=params.excluded):
         _bleu = BLEU()
         _bleu.set_excluded_indices([0, 2])
         pair_bleus[s+'-'+t] = _bleu
@@ -195,7 +195,7 @@ def multi_test(device, params, test_dataloader, tokenizer, verbose=50):
     print("Now testing")
     for i, data in enumerate(test_dataloader):
 
-        data = get_directions(data, params.langs)
+        data = get_directions(data, params.langs, excluded=params.excluded)
         for direction, (x, y, y_lang) in data.items():
             x = add_targets(x, y_lang)
             bleu = pair_bleus[direction]
@@ -273,11 +273,14 @@ def main(params):
     if len(params.langs) == 2:
         # bilingual translation
         # check for existing tokenizers
-        try:
-            tokenizers = [Tokenizer.from_file(params.location + '/' + lang + '_tokenizer.json') for lang in
+        if params.tokenizer is not None:
+            tokenizers = [Tokenizer.from_file('pretrained/' + tok + '.json') for tok in params.tokenizer]
+        else:
+            try:
+                tokenizers = [Tokenizer.from_file(params.location + '/' + lang + '_tokenizer.json') for lang in
                           params.langs]
-        except:
-            tokenizers = None
+            except:
+                tokenizers = None
 
         train_dataloader, val_dataloader, test_dataloader, tokenizers = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset,
@@ -288,10 +291,13 @@ def main(params):
     elif len(params.langs) > 2 and not params.pivot:
         # multilingual translation
         #  check for existing tokenizers
-        try:
-            tokenizer = Tokenizer.from_file(params.location + '/multi_tokenizer.json')
-        except:
-            tokenizer = None
+        if params.tokenizer is not None:
+            tokenizer = Tokenizer.from_file('pretrained/' + params.tokenizer + '.json')
+        else:
+            try:
+                tokenizer = Tokenizer.from_file(params.location + '/multi_tokenizer.json')
+            except:
+                tokenizer = None
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset,

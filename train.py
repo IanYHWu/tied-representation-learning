@@ -199,7 +199,7 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
 
             if multi:
                 # sample a tranlsation direction and add target tokens
-                (x, y), (x_lang, y_lang) = sample_direction(data, params.langs)
+                (x, y), (x_lang, y_lang) = sample_direction(data, params.langs, excluded=params.excluded))
                 x = add_targets(x, y_lang)
             else:
                 x, y = data
@@ -241,7 +241,7 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
                 for i, data in enumerate(val_dataloader):
                     if multi:
                         # sample a tranlsation direction and add target tokens
-                        (x, y), (x_lang, y_lang) = sample_direction(data, params.langs)
+                        (x, y), (x_lang, y_lang) = sample_direction(data, params.langs, excluded=params.excluded)
                         x = add_targets(x, y_lang)
                     else:
                         x, y = data
@@ -312,7 +312,14 @@ def main(gpu, params):
             for lang in params.langs:
                 tokenizers.append(Tokenizer.from_file(logger.root_path + '/' + lang + '_tokenizer.json'))
         else:
-            tokenizers = None
+            if params.tokenizer is not None:
+                if len(params.tokenizer) == 2:
+                    tokenizers = [Tokenizer.from_file('pretrained/' + tok + '.json') for tok in params.tokenizer]
+                else:
+                    print('Wrong number of tokenizers passed. Retraining.')
+                    tokenizers = None
+            else:
+                tokenizers = None
 
         train_dataloader, val_dataloader, test_dataloader, _ = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=False, path=logger.root_path,
@@ -327,7 +334,10 @@ def main(gpu, params):
         if params.checkpoint:
             tokenizer = Tokenizer.from_file(logger.root_path + '/multi_tokenizer.json')
         else:
-            tokenizer = None
+            if params.tokeniser is not None:
+                tokenizer = Tokenizer.from_file('pretrained/' + params.tokenizer + '.json')
+            else:
+                tokenizer = None
 
         train_dataloader, val_dataloader, test_dataloader, tokenizer = preprocess.load_and_preprocess(
             params.langs, params.batch_size, params.vocab_size, params.dataset, multi=True, path=logger.root_path,
