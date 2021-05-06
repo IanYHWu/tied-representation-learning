@@ -16,16 +16,13 @@ basic:
 aiayn:
   model: base
   vocab_size: 10000
-  batch_size: 20
   layers: 6
   heads: 8
   dff: 2048
   d_model: 512
   max_pe: 1500
   dropout: 0.1
-  epochs: 15
   warmup_steps: 4000
-  lr_scale: 0.1
 
 hs_model:
   model: base
@@ -54,3 +51,16 @@ hs_model_small:
   epochs: 15
   warmup_steps: 4000
   lr_scale: 1.0
+
+main:
+  model: base
+  vocab_size: 30000
+  layers: 4
+  heads: 4
+  dff: 1024
+  d_model: 256
+  max_pe: 1500
+  dropout: 0.1
+  warmup_steps: 5000
+  lr_scale: 1.0
+  max_len: 300 

@@ -102,12 +102,12 @@ def pad_sequence(sequences, batch_first=False, padding_value=0.0, max_len = None
 
     out_tensor = sequences[0].new_full(out_dims, padding_value)
     for i, tensor in enumerate(sequences):
-        length = tensor.size(0)
+        length = min([tensor.size(0), max_len])
         # use index notation to prevent duplicate references to the tensor
         if batch_first:
-            out_tensor[i, :length, ...] = tensor
+            out_tensor[i, :length, ...] = tensor[:length]
         else:
-            out_tensor[:length, i, ...] = tensor
+            out_tensor[:length, i, ...] = tensor[:length]
 
     return out_tensor
 

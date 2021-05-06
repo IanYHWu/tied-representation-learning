@@ -40,10 +40,18 @@ def accuracy_fn(y_pred, y_true):
     return (_acc * _mask).sum() / _mask.sum()
 
 
-def sample_direction(data, langs):
+def sample_direction(data, langs, excluded=None):
     """randomly sample a source and target language from
     n_langs possible combinations"""
     source, target = np.random.choice(len(langs), size=(2,), replace=False)
+    n_langs = len(langs)
+    p = np.ones((n_langs,n_langs))
+    np.fill_diagonal(p, 0.0)
+    p = (p/p.sum()).flatten()
+    for s, t in excluded:
+        p[langs.index(s), langs.index(t)] = 0.0
+    n = np.random.choice(n_langs**2, p=p)
+    source, target = n // n_langs, n % n_langs
     return (data[source], data[target]), (langs[source], langs[target])
 
 
@@ -53,19 +61,26 @@ def get_direction(data, ind_source, ind_target):
     return data[ind_source], data[ind_target]
 
 
-def get_pairs(inp_list):
-    """get all ordered pairs of given list"""
+def get_pairs(inp_list, excluded=None):
+    """get all ordered pairs of given list
+    excluded : list of tuples of pairs to ignore."""
     pairs = list(combinations(inp_list, 2))
     pairs.extend([(y,x) for x,y in pairs])
+
+    if excluded is not None:
+        pairs = [(s, t) for s, t in pairs if (s, t) not in excluded]
+
     return pairs
 
 
-def get_directions(data, langs):
+def get_directions(data, langs, excluded=None):
     """unpacks all translation pairs from a batch of translations. Takes
     a dict of batches of tensors and returns a dict of tensors for each
-    language direction."""
+    language direction.
+    excluded : list of tuples of pairs to ignore.
+    """
 
-    source, target = list(zip(*get_pairs(langs)))
+    source, target = list(zip(*get_pairs(langs, excluded=excluded)))
 
     batch_size = data[0].shape[0]
     out = {}
@@ -78,12 +93,13 @@ def get_directions(data, langs):
     return out
 
 
-def get_all_directions(data, langs):
+def get_all_directions(data, langs, excluded=None):
     """unpacks all translation pairs from a batch of translations. Takes
     a dict of batches of tensors and returns a tensor of first dim size
-    batch_size * len(langs) * (len(langs) - 1)."""
+    batch_size * len(langs) * (len(langs) - 1).
+    excluded : list of tuples of pairs to ignore."""
 
-    source, target = list(zip(*get_pairs(langs)))
+    source, target = list(zip(*get_pairs(langs, excluded=excluded)))
 
     batch_size = data[0].shape[0]
     full_targets = []
