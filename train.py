@@ -195,8 +195,8 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
     if rank == 0:
         if params.wandb:
             wandb.watch(model)
-        batch_losses, batch_accs = [], []
-        epoch_losses, epoch_accs = [], []
+        batch_losses, batch_auxs, batch_accs = [], [], []
+        epoch_losses, epoch_auxs, epoch_accs = [], [], []
         val_epoch_losses, val_epoch_accs, val_epoch_bleus = [], [], []
 
     while epoch < params.epochs:
@@ -204,6 +204,7 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
 
         # train
         epoch_loss = 0.0
+        epoch_aux = 0.0
         epoch_acc = 0.0
         for i, data in enumerate(train_dataloader):
 
@@ -216,7 +217,7 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
 
             if params.auxiliary:
                 batch_loss, batch_aux, batch_acc = aux_train_step(x, y, model, criterion, aux_criterion,
-                    params.aux_strength params.frozen_layers, optimizer, scheduler, device,
+                    params.aux_strength, params.frozen_layers, optimizer, scheduler, device,
                     distributed=params.distributed)
             else:
                 batch_loss, batch_aux, batch_acc = train_step(x, y, model, criterion, aux_criterion, optimizer,
@@ -227,19 +228,22 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
                 batch_aux = batch_aux.item()
                 batch_acc = batch_acc.item()
                 batch_losses.append(batch_loss)
+                batch_auxs.append(batch_aux)
                 batch_accs.append(batch_acc)
                 epoch_loss += (batch_loss - epoch_loss) / (i + 1)
+                epoch_aux += (batch_aux - epoch_aux) / (i + 1)
                 epoch_acc += (batch_acc - epoch_acc) / (i + 1)
 
                 if verbose is not None:
                     if i % verbose == 0:
-                        print('Batch {} Loss {:.4f} Aux loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
-                            i, batch_loss, batch_aux, batch_acc, (time.time() - start_) / (i + 1)))
+                        print('Batch {} Loss {:.4f} Aux Loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
+                            i, epoch_loss, epoch_aux, epoch_acc, (time.time() - start_) / (i + 1)))
                 if params.wandb:
                     wandb.log({'loss': batch_loss, 'aux_loss': batch_aux, 'accuracy': batch_acc})
 
         if rank == 0:
             epoch_losses.append(epoch_loss)
+            epoch_auxs.append(epoch_aux)
             epoch_accs.append(epoch_acc)
 
         # val only on rank 0
@@ -271,22 +275,22 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
                 val_bleu = bleu.get_metric()
 
                 if verbose is not None:
-                    print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
-                          ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu,
+                    print('Epoch {} Loss {:.4f} Aux Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
+                          ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_aux, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu,
                                                       time.time() - start_))
                 if params.wandb:
-                    wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
+                    wandb.log({'loss': epoch_loss, 'aux_loss': epoch_aux, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
                                'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu})
             else:
                 if verbose is not None:
-                    print('Epoch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
-                        epoch, epoch_loss, epoch_acc, time.time() - start_))
+                    print('Epoch {} Loss {:.4f} Aux Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
+                        epoch, epoch_loss, epoch_loss, epoch_acc, time.time() - start_))
                 if params.wandb:
-                    wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
+                    wandb.log({'loss': epoch_loss, 'aux_loss': epoch_aux, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
                                'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu})
 
             logger.save_model(epoch, model, optimizer, scheduler=scheduler)
-            logger.log_results([epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu])
+            logger.log_results([epoch_loss, epoch_aux, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu])
             
         epoch += 1
 
