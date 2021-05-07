@@ -117,21 +117,10 @@ def get_all_directions(data, langs, excluded=None):
 
 def mask_after_stop(input_tensor, stop_token):
     """mask all tokens after the stop token"""
-    input_tensor = input_tensor.cpu()
-    input_arr = input_tensor.numpy()
-    match_indices = np.argwhere(input_arr == stop_token)
-    batch_size, tensor_len = input_tensor.shape
-    t_len_arr = np.vstack((np.arange(batch_size), np.ones(batch_size)*tensor_len)).T
-    comb_arr = np.concatenate((match_indices, t_len_arr))
-    _, i = np.unique(comb_arr[:, 0], return_index=True)
-    end_indices = comb_arr[i][:, 1]
-
-    mask = torch.zeros(input_tensor.shape[0], input_tensor.shape[1] + 1, dtype=int)
-    mask[(torch.arange(input_tensor.shape[0]), end_indices)] = 1
-    mask = 1 - mask.cumsum(dim=1)[:, :-1]
-    output_tensor = input_tensor * mask
-
-    return output_tensor
+    mask = torch.roll((input_tensor == stop_token).int(), 1, dims=1)
+    mask[:,0] = torch.zeros(mask.size(0)).to(mask.device)
+    mask = 1 - torch.cumsum(mask, 1)
+    return input_tensor * mask
 
 
 def remove_after_stop(sentence):

@@ -38,7 +38,7 @@ def greedy_search(x, y, y_tar, model, enc_mask=None):
     return torch.cat(y_pred, dim=1)
 
 
-def single_beam_search(x, y, model, enc_mask=None, beam_length=2, max_len=0):
+def single_beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2):
     """
     x : (seq_len)
     y : ([]) tensor of start token
@@ -46,22 +46,22 @@ def single_beam_search(x, y, model, enc_mask=None, beam_length=2, max_len=0):
     """
 
     x_enc = model.encoder(x.unsqueeze(0), enc_mask.unsqueeze(0)) # (1, seq_len, d_model)
-    x_enc = x_enc.repeat(beam_length, 1, 1) # (beam, seq_len, d_model)
+    x_enc = x_enc.repeat(beam_length, 1, 1) # (beam, seq_len, d_model)
     decode = lambda y: F.log_softmax(model.final_layer(model.decoder(y, x_enc, None, None)[0]), dim=-1)
 
-    y = y.reshape(1, 1).repeat(beam_length, 1) # (beam, 1)
+    y = y.reshape(1, 1).repeat(beam_length, 1) # (beam, 1)
     log_p = torch.zeros(beam_length).to(y.device)
 
-    for t in range(x.size(0)+max_len):
+    for t in range(y_tar.size(0)):
         with torch.no_grad():
 
             # expand beams
-            y_pred = decode(y)[:, -1, :] # (beam, vocab)
+            y_pred = decode(y)[:, -1, :] # (beam, vocab)
             new_log_p = (log_p.unsqueeze(-1) + y_pred).reshape(-1) # (beam * vocab)
 
             # trim beams
-            log_p, beam_idxs = torch.topk(new_log_p, beam_length) # (beam,)
-            beam_id, new_token = beam_idxs % beam_length, beam_idxs // beam_length
+            log_p, beam_idxs = torch.topk(new_log_p, beam_length) # (beam,)
+            beam_id, new_token = beam_idxs // y_pred.size(-1), beam_idxs % y_pred.size(-1)
 
             # update input
             y = torch.cat([y[beam_id], new_token.unsqueeze(-1)], dim=-1)
@@ -73,39 +73,14 @@ def single_beam_search(x, y, model, enc_mask=None, beam_length=2, max_len=0):
     
 
 def beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2):
-    """Inference loop exploring the n most probable paths at each step."""
-    x_enc = model.encoder(x, enc_mask).unsqueeze(1).repeat(1, beam_length, 1, 1)
-    x_enc = x_enc.reshape(-1, x_enc.size(2), x_enc.size(3))
-    decode = lambda y: F.log_softmax(model.final_layer(model.decoder(y, x_enc, None, None)[0]), dim=-1)
-
-    # initial beams and probabilities
-    y = y.unsqueeze(1).repeat(1, beam_length, 1)
-    log_p = torch.zeros(y.size(0), beam_length).to(y.device)  #  (batch, beam)
-
-    for t in range(y_tar.size(1)):
-        with torch.no_grad():
-            # expand beams
-            output = decode(y.reshape(-1, y.size(-1)))[:, -1, :]  # (batch*beam, vocab_size)
-            new_log_p, new_tokens = torch.topk(output, beam_length, dim=-1)  # (batch*beam, beam)
-
-            # get probability of each beam and trim beams
-            log_p = log_p.unsqueeze(-1) + new_log_p.reshape(-1, beam_length, beam_length)
-            log_p, indices = torch.topk(log_p.reshape(-1, beam_length * beam_length), beam_length, dim=-1)
-
-            # get the new tokens for each beam (batch, beam)
-            new_tokens = torch.gather(new_tokens.reshape(-1, beam_length * beam_length), 1, indices)
-
-            # get the new beams
-            y_ = y.unsqueeze(2).repeat(1, 1, beam_length, 1).reshape(-1, beam_length * beam_length, y.size(-1))
-            new_y = torch.gather(y_, 1, indices.unsqueeze(-1).repeat(1, 1, y_.size(-1)))  # (batch, beam, seq_len)
-
-            y = torch.cat([new_y, new_tokens.unsqueeze(-1)], dim=-1)  # (batch, beam, seq_len + 1)
-
-    #  get the beam with the highest log prob
-    best_beam = log_p.argmax(-1, keepdim=True)  #  (batch,)
-    y = torch.gather(y, 1, best_beam.unsqueeze(-1).repeat(1, 1, y.size(-1)))  #  (batch, tar_len+1)
-
-    return y[:, 0, 1:]  # (batch, tar_len)
+    preds = []
+    for i in range(x.size(0)):
+        enc_mask_i = enc_mask[i] if enc_mask is not None else None
+        preds.append(single_beam_search(
+            x[i], y[i], y_tar[i], model,
+            enc_mask=enc_mask_i, beam_length=beam_length)
+        )
+    return torch.stack(preds, dim=0)
 
 
 def inference_step(x, y, model, logger, tokenizer, device, bleu=None,
