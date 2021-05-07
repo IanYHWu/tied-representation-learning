@@ -158,7 +158,7 @@ def setup(params):
         for param, val in prev_params.__dict__.items():
             if param not in RESERVED:
                 setattr(params, param, val)
-        params.epochs += add_epochs
+        params.epochs += params.add_epochs
         logger = logging.TrainLogger(params)
         logger.make_dirs()
     else:
