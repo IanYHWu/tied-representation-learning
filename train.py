@@ -147,13 +147,17 @@ def val_step(x, y, model, criterion, bleu, device, distributed=False):
 
 
 def setup(params):
+    """ Create directories required and create logger. If checkpoint then
+    some parameters are overwritten by command line arguments."""
+    RESERVED = ['wandb', 'add_epochs', 'checkpoint', 'location', 'name']
+
     new_root_path = params.location
     new_name = params.name
     if params.checkpoint:
-        add_epochs = params.add_epochs
-        params = logging.load_params(new_root_path + '/' + new_name)
-        params.location = new_root_path
-        params.name = new_name
+        prev_params = logging.load_params(new_root_path + '/' + new_name)
+        for param, val in prev_params.__dict__.items():
+            if param not in RESERVED:
+                setattr(params, param, val)
         params.epochs += add_epochs
         logger = logging.TrainLogger(params)
         logger.make_dirs()
