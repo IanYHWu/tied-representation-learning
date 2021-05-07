@@ -98,12 +98,10 @@ class test_parser:
 
     @staticmethod
     def parse_args():
-        args = __test_parser.parse_args()
+        args = _test_parser.parse_args()
 
         # add on parse methods here
         args.excluded = [(args.excluded[i], args.excluded[i+1]) for i in range(0, len(args.excluded), 2)]
-        if args.max_len is None:
-            args.max_len = args.max_pe
 
         return args
 
