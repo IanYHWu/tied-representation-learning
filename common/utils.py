@@ -119,7 +119,7 @@ def mask_after_stop(input_tensor, stop_token):
     """mask all tokens after the stop token"""
     mask = torch.roll((input_tensor == stop_token).int(), 1, dims=1)
     mask[:,0] = torch.zeros(mask.size(0)).to(mask.device)
-    mask = 1 - torch.cumsum(mask, 1)
+    mask = torch.clip(1 - torch.cumsum(mask, 1), 0, 1)
     return input_tensor * mask
 
 
