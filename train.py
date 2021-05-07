@@ -161,7 +161,7 @@ def setup(params):
         logger = logging.TrainLogger(params)
         logger.make_dirs()
     logger.save_params()
-    return logger
+    return logger, params
 
 
 def train(rank, device, logger, params, train_dataloader, val_dataloader=None, tokenizer=None,
@@ -316,7 +316,7 @@ def main(gpu, params):
         wandb.init(project='mnmt', entity='nlp-mnmt-project',
                    config={k: v for k, v in params.__dict__.items() if isinstance(v, (float, int, str))})
         config = wandb.config
-    logger = setup(params)
+    logger, params = setup(params)
 
     # load data and train for required experiment
     if len(params.langs) == 2:
