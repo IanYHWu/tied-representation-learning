@@ -54,13 +54,15 @@ hs_model_small:
 
 main:
   model: base
-  vocab_size: 30000
+  vocab_size: 15000
   layers: 4
   heads: 4
   dff: 1024
   d_model: 256
   max_pe: 1500
   dropout: 0.1
-  warmup_steps: 5000
+  warmup_steps: 16000
   lr_scale: 1.0
-  max_len: 300 
+  max_len: 1500
+  dataset: ted_multi
+  aux_strength: 0.001 
