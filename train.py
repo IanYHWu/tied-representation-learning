@@ -30,19 +30,24 @@ def seed_all(SEED):
     np.random.seed(SEED)
 
 
-def train_step(x, y, model, criterion, optimizer, scheduler, device, distributed=False):
+def train_step(x, y, model, criterion, aux_criterion, optimizer, scheduler, device, distributed=False):
     # get masks and targets
     y_inp, y_tar = y[:, :-1], y[:, 1:]
     enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
 
+    # mask for the target language encoded representation.
+    enc_mask_aux = base_transformer.create_mask(y_inp)
+
     # devices
-    x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask = to_devices(
-        (x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask),
+    x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux = to_devices(
+        (x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux),
         device, non_blocking=distributed)
 
     # forward
     model.train()
-    y_pred, _ = model(x, y_inp, enc_mask, look_ahead_mask, dec_mask)
+    x_enc = model.encoder(x, enc_mask)
+    y_enc = model.encoder(y_inp, enc_mask_aux)
+    y_pred = model.final_layer(model.decoder(y_inp, x_enc, look_ahead_mask, dec_mask)[0])
     loss = loss_fn(y_pred.permute(0, 2, 1), y_tar, criterion)
 
     # backward
@@ -51,11 +56,15 @@ def train_step(x, y, model, criterion, optimizer, scheduler, device, distributed
     optimizer.step()
     scheduler.step()
 
+    with torch.no_grad():
+        loss_aux = auxiliary_loss_fn(x_enc, y_enc, aux_criterion, x_mask=enc_mask, y_mask=enc_mask_aux)
+
     # metrics
     batch_loss = loss.detach()
+    batch_aux = loss_aux
     batch_acc = accuracy_fn(y_pred.detach(), y_tar)
 
-    return batch_loss, batch_acc
+    return batch_loss, batch_aux, batch_acc
 
 
 def param_freeze(model, frozen_layers, unfreeze=False):
@@ -67,7 +76,7 @@ def param_freeze(model, frozen_layers, unfreeze=False):
     return model
 
 
-def aux_train_step(x, y, model, criterion, aux_criterion, frozen_layers,
+def aux_train_step(x, y, model, criterion, aux_criterion, aux_strength, frozen_layers,
     optimizer, scheduler, device, distributed=False):
     """ Single training step using an auxiliary loss on the encoder outputs."""
 
@@ -97,18 +106,19 @@ def aux_train_step(x, y, model, criterion, aux_criterion, frozen_layers,
     # aux loss
     model = param_freeze(model, frozen_layers)
     loss_aux = auxiliary_loss_fn(x_enc, y_enc, aux_criterion, x_mask=enc_mask, y_mask=enc_mask_aux)
-    loss_aux.backward()
+    scaled_loss_aux = loss_aux * aux_strength
+    scaled_loss_aux.backward()
 
     optimizer.step()
     scheduler.step()
     model = param_freeze(model, frozen_layers, unfreeze=True)
 
     # metrics
-    loss = loss_main + loss_aux
-    batch_loss = loss.detach()
+    batch_loss = loss_main.detach()
+    batch_aux = loss_aux.detach()
     batch_acc = accuracy_fn(y_pred.detach(), y_tar)
 
-    return batch_loss, batch_acc
+    return batch_loss, batch_aux, batch_acc
 
 
 def val_step(x, y, model, criterion, bleu, device, distributed=False):
@@ -168,10 +178,10 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
     optimizer = torch.optim.Adam(model.parameters())
     scheduler = WarmupDecay(optimizer, params.warmup_steps, params.d_model, lr_scale=params.lr_scale)
     criterion = torch.nn.CrossEntropyLoss(reduction='none')
-    if params.auxiliary:
-        _aux_criterion = torch.nn.CosineEmbeddingLoss(reduction='mean')
-        _target = torch.tensor(1.0).to(device)
-        aux_criterion = lambda x, y: params.aux_strength * _aux_criterion(x, y, _target)
+
+    _aux_criterion = torch.nn.CosineEmbeddingLoss(reduction='mean')
+    _target = torch.tensor(1.0).to(device)
+    aux_criterion = lambda x, y: _aux_criterion(x, y, _target)
     
     epoch = 0
     if params.checkpoint:
@@ -205,14 +215,16 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
                 x, y = data
 
             if params.auxiliary:
-                batch_loss, batch_acc = aux_train_step(x, y, model, criterion, aux_criterion,
-                    params.frozen_layers, optimizer, scheduler, device, distributed=params.distributed)
+                batch_loss, batch_aux, batch_acc = aux_train_step(x, y, model, criterion, aux_criterion,
+                    params.aux_strength params.frozen_layers, optimizer, scheduler, device,
+                    distributed=params.distributed)
             else:
-                batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, scheduler,
-                    device, distributed=params.distributed)
+                batch_loss, batch_aux, batch_acc = train_step(x, y, model, criterion, aux_criterion, optimizer,
+                    scheduler, device, distributed=params.distributed)
 
             if rank == 0:
                 batch_loss = batch_loss.item()
+                batch_aux = batch_aux.item()
                 batch_acc = batch_acc.item()
                 batch_losses.append(batch_loss)
                 batch_accs.append(batch_acc)
@@ -221,10 +233,10 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
 
                 if verbose is not None:
                     if i % verbose == 0:
-                        print('Batch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
-                            i, epoch_loss, epoch_acc, (time.time() - start_) / (i + 1)))
+                        print('Batch {} Loss {:.4f} Aux loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
+                            i, batch_loss, batch_aux, batch_acc, (time.time() - start_) / (i + 1)))
                 if params.wandb:
-                    wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc})
+                    wandb.log({'loss': batch_loss, 'aux_loss': batch_aux, 'accuracy': batch_acc})
 
         if rank == 0:
             epoch_losses.append(epoch_loss)
