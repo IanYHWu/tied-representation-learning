@@ -420,6 +420,43 @@ class Transformer(nn.Module):
         return final_output, attention_weights
 
 
+class MultiTransformer(nn.Module):
+    """ Multilingual transformer class. Shares embeddings between encoder
+    and decoder."""
+    def __init__(self, num_layers = 4, num_heads = 4, dff = 256,
+                 d_model = 64, vocab_size = 1500, pe_input = 1500,
+                 pe_target = 1500, rate=0.1):
+        super(Transformer, self).__init__()
+
+        self.embedding = nn.Embedding(vocab_size, d_model)
+
+        self.encoder = EncoderNoEmbed(num_layers, d_model, num_heads, dff,
+                               input_vocab_size, pe_input, rate)
+
+        self.decoder = DecoderNoEmbed(num_layers, d_model, num_heads, dff,
+                               target_vocab_size, pe_target, rate)
+
+        self.final_layer = nn.Linear(d_model, target_vocab_size)
+
+    def forward(self, inp, tar, enc_mask, look_ahead_mask, dec_mask):
+
+        # (batch, seq_len, d_model)
+
+        inp = self.embeding(inp)
+        tar = self.embeding(tar)
+
+        # (batch_size, inp_seq_len, d_model)
+        enc_output = self.encoder(inp, enc_mask)
+
+        # (batch_size, tar_seq_len, d_model)
+        dec_output, attention_weights = self.decoder(tar, enc_output, look_ahead_mask, dec_mask)
+
+        # (batch_size, tar_seq_len, target_vocab_size
+        final_output = self.final_layer(dec_output)
+
+        return final_output, attention_weights
+
+
 if __name__ == '__main__':
     model = Transformer(1, 1, 8, 4, 7, 7, 10, 10)
 
