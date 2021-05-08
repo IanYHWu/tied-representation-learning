@@ -65,4 +65,3 @@ main:
   lr_scale: 1.0
   max_len: 1500
   dataset: ted_multi
-  aux_strength: 0.001 

@@ -30,19 +30,24 @@ def seed_all(SEED):
     np.random.seed(SEED)
 
 
-def train_step(x, y, model, criterion, optimizer, scheduler, device, distributed=False):
+def train_step(x, y, model, criterion, aux_criterion, optimizer, scheduler, device, distributed=False):
     # get masks and targets
     y_inp, y_tar = y[:, :-1], y[:, 1:]
     enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
 
+    # mask for the target language encoded representation.
+    enc_mask_aux = base_transformer.create_mask(y_inp)
+
     # devices
-    x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask = to_devices(
-        (x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask),
+    x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux = to_devices(
+        (x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux),
         device, non_blocking=distributed)
 
     # forward
     model.train()
-    y_pred, _ = model(x, y_inp, enc_mask, look_ahead_mask, dec_mask)
+    x_enc = model.encoder(x, enc_mask)
+    y_enc = model.encoder(y_inp, enc_mask_aux)
+    y_pred = model.final_layer(model.decoder(y_inp, x_enc, look_ahead_mask, dec_mask)[0])
     loss = loss_fn(y_pred.permute(0, 2, 1), y_tar, criterion)
 
     # backward
@@ -51,11 +56,15 @@ def train_step(x, y, model, criterion, optimizer, scheduler, device, distributed
     optimizer.step()
     scheduler.step()
 
+    with torch.no_grad():
+        loss_aux = auxiliary_loss_fn(x_enc, y_enc, aux_criterion, x_mask=enc_mask, y_mask=enc_mask_aux)
+
     # metrics
     batch_loss = loss.detach()
+    batch_aux = loss_aux
     batch_acc = accuracy_fn(y_pred.detach(), y_tar)
 
-    return batch_loss, batch_acc
+    return batch_loss, batch_aux, batch_acc
 
 
 def param_freeze(model, frozen_layers, unfreeze=False):
@@ -67,7 +76,7 @@ def param_freeze(model, frozen_layers, unfreeze=False):
     return model
 
 
-def aux_train_step(x, y, model, criterion, aux_criterion, frozen_layers,
+def aux_train_step(x, y, model, criterion, aux_criterion, aux_strength, frozen_layers,
     optimizer, scheduler, device, distributed=False):
     """ Single training step using an auxiliary loss on the encoder outputs."""
 
@@ -97,18 +106,19 @@ def aux_train_step(x, y, model, criterion, aux_criterion, frozen_layers,
     # aux loss
     model = param_freeze(model, frozen_layers)
     loss_aux = auxiliary_loss_fn(x_enc, y_enc, aux_criterion, x_mask=enc_mask, y_mask=enc_mask_aux)
-    loss_aux.backward()
+    scaled_loss_aux = loss_aux * aux_strength
+    scaled_loss_aux.backward()
 
     optimizer.step()
     scheduler.step()
     model = param_freeze(model, frozen_layers, unfreeze=True)
 
     # metrics
-    loss = loss_main + loss_aux
-    batch_loss = loss.detach()
+    batch_loss = loss_main.detach()
+    batch_aux = loss_aux.detach()
     batch_acc = accuracy_fn(y_pred.detach(), y_tar)
 
-    return batch_loss, batch_acc
+    return batch_loss, batch_aux, batch_acc
 
 
 def val_step(x, y, model, criterion, bleu, device, distributed=False):
@@ -137,21 +147,25 @@ def val_step(x, y, model, criterion, bleu, device, distributed=False):
 
 
 def setup(params):
+    """ Create directories required and create logger. If checkpoint then
+    some parameters are overwritten by command line arguments."""
+    RESERVED = ['wandb', 'add_epochs', 'checkpoint', 'location', 'name']
+
     new_root_path = params.location
     new_name = params.name
     if params.checkpoint:
-        add_epochs = params.add_epochs
-        params = logging.load_params(new_root_path + '/' + new_name)
-        params.location = new_root_path
-        params.name = new_name
-        params.epochs += add_epochs
+        prev_params = logging.load_params(new_root_path + '/' + new_name)
+        for param, val in prev_params.__dict__.items():
+            if param not in RESERVED:
+                setattr(params, param, val)
+        params.epochs += params.add_epochs
         logger = logging.TrainLogger(params)
         logger.make_dirs()
     else:
         logger = logging.TrainLogger(params)
         logger.make_dirs()
     logger.save_params()
-    return logger
+    return logger, params
 
 
 def train(rank, device, logger, params, train_dataloader, val_dataloader=None, tokenizer=None,
@@ -168,10 +182,10 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
     optimizer = torch.optim.Adam(model.parameters())
     scheduler = WarmupDecay(optimizer, params.warmup_steps, params.d_model, lr_scale=params.lr_scale)
     criterion = torch.nn.CrossEntropyLoss(reduction='none')
-    if params.auxiliary:
-        _aux_criterion = torch.nn.CosineEmbeddingLoss(reduction='mean')
-        _target = torch.tensor(1.0).to(device)
-        aux_criterion = lambda x, y: params.aux_strength * _aux_criterion(x, y, _target)
+
+    _aux_criterion = torch.nn.CosineEmbeddingLoss(reduction='mean')
+    _target = torch.tensor(1.0).to(device)
+    aux_criterion = lambda x, y: _aux_criterion(x, y, _target)
     
     epoch = 0
     if params.checkpoint:
@@ -185,8 +199,8 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
     if rank == 0:
         if params.wandb:
             wandb.watch(model)
-        batch_losses, batch_accs = [], []
-        epoch_losses, epoch_accs = [], []
+        batch_losses, batch_auxs, batch_accs = [], [], []
+        epoch_losses, epoch_auxs, epoch_accs = [], [], []
         val_epoch_losses, val_epoch_accs, val_epoch_bleus = [], [], []
 
     while epoch < params.epochs:
@@ -194,6 +208,7 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
 
         # train
         epoch_loss = 0.0
+        epoch_aux = 0.0
         epoch_acc = 0.0
         for i, data in enumerate(train_dataloader):
 
@@ -205,29 +220,34 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
                 x, y = data
 
             if params.auxiliary:
-                batch_loss, batch_acc = aux_train_step(x, y, model, criterion, aux_criterion,
-                    params.frozen_layers, optimizer, scheduler, device, distributed=params.distributed)
+                batch_loss, batch_aux, batch_acc = aux_train_step(x, y, model, criterion, aux_criterion,
+                    params.aux_strength, params.frozen_layers, optimizer, scheduler, device,
+                    distributed=params.distributed)
             else:
-                batch_loss, batch_acc = train_step(x, y, model, criterion, optimizer, scheduler,
-                    device, distributed=params.distributed)
+                batch_loss, batch_aux, batch_acc = train_step(x, y, model, criterion, aux_criterion, optimizer,
+                    scheduler, device, distributed=params.distributed)
 
             if rank == 0:
                 batch_loss = batch_loss.item()
+                batch_aux = batch_aux.item()
                 batch_acc = batch_acc.item()
                 batch_losses.append(batch_loss)
+                batch_auxs.append(batch_aux)
                 batch_accs.append(batch_acc)
                 epoch_loss += (batch_loss - epoch_loss) / (i + 1)
+                epoch_aux += (batch_aux - epoch_aux) / (i + 1)
                 epoch_acc += (batch_acc - epoch_acc) / (i + 1)
 
                 if verbose is not None:
                     if i % verbose == 0:
-                        print('Batch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
-                            i, epoch_loss, epoch_acc, (time.time() - start_) / (i + 1)))
+                        print('Batch {} Loss {:.4f} Aux Loss {:.4f} Accuracy {:.4f} in {:.4f} s per batch'.format(
+                            i, epoch_loss, epoch_aux, epoch_acc, (time.time() - start_) / (i + 1)))
                 if params.wandb:
-                    wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc})
+                    wandb.log({'loss': batch_loss, 'aux_loss': batch_aux, 'accuracy': batch_acc})
 
         if rank == 0:
             epoch_losses.append(epoch_loss)
+            epoch_auxs.append(epoch_aux)
             epoch_accs.append(epoch_acc)
 
         # val only on rank 0
@@ -259,22 +279,22 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
                 val_bleu = bleu.get_metric()
 
                 if verbose is not None:
-                    print('Epoch {} Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
-                          ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu,
+                    print('Epoch {} Loss {:.4f} Aux Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
+                          ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_aux, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu,
                                                       time.time() - start_))
                 if params.wandb:
-                    wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
+                    wandb.log({'loss': epoch_loss, 'aux_loss': epoch_aux, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
                                'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu})
             else:
                 if verbose is not None:
-                    print('Epoch {} Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
-                        epoch, epoch_loss, epoch_acc, time.time() - start_))
+                    print('Epoch {} Loss {:.4f} Aux Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
+                        epoch, epoch_loss, epoch_loss, epoch_acc, time.time() - start_))
                 if params.wandb:
-                    wandb.log({'loss': epoch_loss, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
+                    wandb.log({'loss': epoch_loss, 'aux_loss': epoch_aux, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
                                'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu})
 
             logger.save_model(epoch, model, optimizer, scheduler=scheduler)
-            logger.log_results([epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu])
+            logger.log_results([epoch_loss, epoch_aux, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu])
             
         epoch += 1
 
@@ -300,7 +320,7 @@ def main(gpu, params):
         wandb.init(project='mnmt', entity='nlp-mnmt-project',
                    config={k: v for k, v in params.__dict__.items() if isinstance(v, (float, int, str))})
         config = wandb.config
-    logger = setup(params)
+    logger, params = setup(params)
 
     # load data and train for required experiment
     if len(params.langs) == 2:
