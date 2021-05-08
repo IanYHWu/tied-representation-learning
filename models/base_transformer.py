@@ -268,9 +268,9 @@ class Encoder(nn.Module):
 
         self.dropout = nn.Dropout(rate)
 
-    def forward(self, x, mask):
+    def forward(self, x, mask, visualise=False):
         # x shape is batch_size x input_seq_len
-
+        latents = []
         seq_len = x.size()[1]
 
         # adding embedding and position encoding
@@ -283,9 +283,14 @@ class Encoder(nn.Module):
         x = self.dropout(x)
 
         for i in range(self.num_layers):
+            latents.append(x)
             x = self.enc_layers[i](x, mask)
 
-        return x  # (batch_size, input_seq_len, d_model)
+        if visualise:
+            return x, latents
+
+        else:
+            return x  # (batch_size, input_seq_len, d_model)
 
 
 class Decoder(nn.Module):
@@ -394,9 +399,9 @@ class DecoderNoEmbed(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, num_layers = 4, num_heads = 4, dff = 256,
-                 d_model = 64, input_vocab_size = 1500, target_vocab_size = 1500,
-                 pe_input = 1500, pe_target = 1500, rate=0.1):
+    def __init__(self, num_layers=4, num_heads=4, dff=256,
+                 d_model=64, input_vocab_size=1500, target_vocab_size=1500,
+                 pe_input=1500, pe_target=1500, rate=0.1):
         super(Transformer, self).__init__()
 
         self.encoder = Encoder(num_layers, d_model, num_heads, dff,
