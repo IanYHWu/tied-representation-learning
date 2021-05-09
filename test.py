@@ -27,7 +27,7 @@ def greedy_search(x, y, y_tar, model, enc_mask=None):
     for t in range(y_tar.size(1)):
         with torch.no_grad():
             # Compute output of all translations up until sequence position t.
-            output = model.final_layer(model.decoder(y, x_enc, None, None)[0])
+            output = model.final_layer(model.decode(y, x_enc, None, None)[0])
             # Take most recently computed time step.
             output = output[:, -1, :].squeeze()
             # Retrieve predicted token.
@@ -48,19 +48,19 @@ def single_beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2, alpha=0
     if enc_mask is not None:
         enc_mask = enc_mask.unsqueeze(0)
 
-    x_enc = model.encoder(x.unsqueeze(0), enc_mask) # (1, seq_len, d_model)
+    x_enc = model.encode(x.unsqueeze(0), enc_mask) # (1, seq_len, d_model)
     x_enc = x_enc.repeat(beam_length, 1, 1) # (beam, seq_len, d_model)
 
     y = y.reshape(1, 1).repeat(beam_length, 1) # (beam, 1)
     log_p = torch.zeros(beam_length).to(y.device)
 
-    attn_block = 'decoder_layer' + str(len(model.decoder.dec_layers)) + '_block2'
+    attn_block = 'decoder_layer' + str(model.num_layers) + '_block2'
 
     for t in range(y_tar.size(0)):
         with torch.no_grad():
 
             # expand beams
-            y_dec, attn_weights = model.decoder(y, x_enc, None, None)
+            y_dec, attn_weights = model.decode(y, x_enc, None, None)
             y_pred = F.log_softmax(model.final_layer(y_dec), dim=-1)[:, -1, :] # (beam, vocab)
             new_log_p = (log_p.unsqueeze(-1) + y_pred)
 

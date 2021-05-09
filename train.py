@@ -45,9 +45,9 @@ def train_step(x, y, model, criterion, aux_criterion, optimizer, scheduler, devi
 
     # forward
     model.train()
-    x_enc = model.encoder(x, enc_mask)
-    y_enc = model.encoder(y_inp, enc_mask_aux)
-    y_pred = model.final_layer(model.decoder(y_inp, x_enc, look_ahead_mask, dec_mask)[0])
+    x_enc = model.encode(x, enc_mask)
+    y_enc = model.encode(y_inp, enc_mask_aux)
+    y_pred = model.final_layer(model.decode(y_inp, x_enc, look_ahead_mask, dec_mask)[0])
     loss = loss_fn(y_pred.permute(0, 2, 1), y_tar, criterion)
 
     # backward
@@ -95,9 +95,9 @@ def aux_train_step(x, y, model, criterion, aux_criterion, aux_strength, frozen_l
     model.train()
     optimizer.zero_grad()
 
-    x_enc = model.encoder(x, enc_mask)
-    y_pred = model.final_layer(model.decoder(y_inp, x_enc, look_ahead_mask, dec_mask)[0])
-    y_enc = model.encoder(y_inp, enc_mask_aux)
+    x_enc = model.encode(x, enc_mask)
+    y_pred = model.final_layer(model.decode(y_inp, x_enc, look_ahead_mask, dec_mask)[0])
+    y_enc = model.encode(y_inp, enc_mask_aux)
 
     # main loss.
     loss_main = loss_fn(y_pred.permute(0, 2, 1), y_tar, criterion)

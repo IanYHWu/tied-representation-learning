@@ -399,6 +399,8 @@ class Transformer(nn.Module):
                  pe_input = 1500, pe_target = 1500, rate=0.1):
         super(Transformer, self).__init__()
 
+        self.num_layers = num_layers
+
         self.encoder = Encoder(num_layers, d_model, num_heads, dff,
                                input_vocab_size, pe_input, rate)
 
@@ -409,15 +411,23 @@ class Transformer(nn.Module):
 
     def forward(self, inp, tar, enc_mask, look_ahead_mask, dec_mask):
         # (batch_size, inp_seq_len, d_model)
-        enc_output = self.encoder(inp, enc_mask)
+        enc_output = self.encode(inp, enc_mask)
 
         # (batch_size, tar_seq_len, d_model)
-        dec_output, attention_weights = self.decoder(tar, enc_output, look_ahead_mask, dec_mask)
+        dec_output, attention_weights = self.decode(tar, enc_output, look_ahead_mask, dec_mask)
 
         # (batch_size, tar_seq_len, target_vocab_size
         final_output = self.final_layer(dec_output)
 
         return final_output, attention_weights
+
+    def encode(self, inp, enc_mask):
+        # (batch_size, inp_seq_len, d_model)
+        return self.encoder(inp, enc_mask)
+
+    def decode(self, tar, enc_output, look_ahead_mask, dec_mask):
+        # (batch_size, tar_seq_len, d_model)
+       return self.decoder(tar, enc_output, look_ahead_mask, dec_mask)
 
 
 class MultiTransformer(nn.Module):
@@ -428,42 +438,40 @@ class MultiTransformer(nn.Module):
                  pe_target = 1500, rate=0.1):
         super(MultiTransformer, self).__init__()
 
+        self.num_layers = num_layers
+
         self.embedding = nn.Embedding(vocab_size, d_model)
 
-        self.enc = EncoderNoEmbed(num_layers, d_model, num_heads, dff,
+        self.encoder = EncoderNoEmbed(num_layers, d_model, num_heads, dff,
                                vocab_size, pe_input, rate)
 
-        self.dec = DecoderNoEmbed(num_layers, d_model, num_heads, dff,
+        self.decoder = DecoderNoEmbed(num_layers, d_model, num_heads, dff,
                                vocab_size, pe_target, rate)
 
         self.final_layer = nn.Linear(d_model, vocab_size)
 
     def forward(self, inp, tar, enc_mask, look_ahead_mask, dec_mask):
 
-        # (batch, seq_len, d_model)
-        inp = self.embeding(inp)
-        tar = self.embeding(tar)
-
         # (batch_size, inp_seq_len, d_model)
-        enc_output = self.enc(inp, enc_mask)
+        enc_output = self.encode(inp, enc_mask)
 
         # (batch_size, tar_seq_len, d_model)
-        dec_output, attention_weights = self.dec(tar, enc_output, look_ahead_mask, dec_mask)
+        dec_output, attention_weights = self.decode(tar, enc_output, look_ahead_mask, dec_mask)
 
         # (batch_size, tar_seq_len, target_vocab_size
         final_output = self.final_layer(dec_output)
 
         return final_output, attention_weights
     
-    def encoder(self, inp, enc_mask):
+    def encode(self, inp, enc_mask):
         """ to only compute encoder output """
         inp = self.embedding(inp)
-        return self.enc(inp, enc_mask)
+        return self.encoder(inp, enc_mask)
     
-    def decoder(self, tar, enc_output, look_ahead_mask, dec_mask):
+    def decode(self, tar, enc_output, look_ahead_mask, dec_mask):
         """ to only compute decoder output given an encoded input """
         tar = self.embedding(tar)
-        return self.dec(tar, enc_output, look_ahead_mask, dec_mask)
+        return self.decoder(tar, enc_output, look_ahead_mask, dec_mask)
 
 
 if __name__ == '__main__':
@@ -475,3 +483,12 @@ if __name__ == '__main__':
     out, attn = model(x, y, None, None, None)
 
     print(out)
+
+    model2 = MultiTransformer(1, 1, 8, 4, 7, 10, 10)
+
+    x = torch.tensor([[0, 1, 2, 2], [0, 1, 2, 2]])
+    y = torch.tensor([[1, 2, 2, 0, 3, 4], [1, 2, 2, 4, 4, 3]])
+
+    out2, attn = model2(x, y, None, None, None)
+
+    print(out2)
