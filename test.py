@@ -44,19 +44,35 @@ def single_beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2, alpha=0
     y : ([]) tensor of start token
     max_len maximum length greater than the length of x to consider
     """
+    attn_block = 'decoder_layer' + str(model.num_layers) + '_block2'
 
     if enc_mask is not None:
         enc_mask = enc_mask.unsqueeze(0)
 
     x_enc = model.encode(x.unsqueeze(0), enc_mask) # (1, seq_len, d_model)
-    x_enc = x_enc.repeat(beam_length, 1, 1) # (beam, seq_len, d_model)
+    x_enc = x_enc.repeat(beam_length, 1, 1)
 
-    y = y.reshape(1, 1).repeat(beam_length, 1) # (beam, 1)
-    log_p = torch.zeros(beam_length).to(y.device)
+    # first iteration
+    y_pred, attn_weights = model.decode(y.reshape(1, 1), x_enc, None, None)
+    y_pred = F.log_softmax(model.final_layer(y_pred), dim=-1)[:1, -1, :] # (1, vocab)
 
-    attn_block = 'decoder_layer' + str(model.num_layers) + '_block2'
+    # compute beam score by s = logP / lp + cp
+    # cp
+    attn_weights = attn_weights[attn_block].mean(1).sum(1) # (1, x_len)
+    cp = beta * torch.log(torch.clamp(attn_weights, min=1.0)).sum(-1) # (1,)
 
-    for t in range(y_tar.size(0)):
+    # lp
+    lp = ((y_tar.size(0) + 5) ** alpha) / (6 ** alpha) # (1, vocab)
+
+    # s
+    s = (y_pred / lp + cp.unsqueeze(-1)).reshape(-1) # (vocab)
+    
+    # trim beams
+    _, new_token = torch.topk(s, beam_length) # (beam,)
+    log_p = y_pred[0][new_token]
+    y = torch.cat([y.repeat(beam_length, 1), new_token.unsqueeze(-1)], dim=-1) # (beam, 2)
+
+    for t in range(1, y_tar.size(0)):
         with torch.no_grad():
 
             # expand beams
@@ -64,16 +80,10 @@ def single_beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2, alpha=0
             y_pred = F.log_softmax(model.final_layer(y_dec), dim=-1)[:, -1, :] # (beam, vocab)
             new_log_p = (log_p.unsqueeze(-1) + y_pred)
 
-            # compute beam score by s = logP / lp + cp
-
-            # cp
+            # compute score
             attn_weights = attn_weights[attn_block].mean(1).sum(1) # (beam, x_len)
-            cp = beta * torch.log(torch.clip(attn_weights, low=1.0)).sum(-1) # (beam,)
-
-            # lp
+            cp = beta * torch.log(torch.clamp(attn_weights, min=1.0)).sum(-1) # (beam,)
             lp = ((y_tar.size(0) + 5) ** alpha) / (6 ** alpha) # (beam, vocab)
-
-            # s
             s = (new_log_p / lp + cp.unsqueeze(-1)).reshape(-1) # (beam * vocab)
 
             # trim beams
