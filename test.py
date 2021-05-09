@@ -45,14 +45,18 @@ def single_beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2):
     max_len maximum length greater than the length of x to consider
     """
 
-    x_enc = model.encoder(x.unsqueeze(0), enc_mask.unsqueeze(0)) # (1, seq_len, d_model)
+    if enc_mask is not None:
+        enc_mask.unsqueeze(0)
+
+    x_enc = model.encoder(x.unsqueeze(0), enc_mask) # (1, seq_len, d_model)
     x_enc = x_enc.repeat(beam_length, 1, 1) # (beam, seq_len, d_model)
     decode = lambda y: F.log_softmax(model.final_layer(model.decoder(y, x_enc, None, None)[0]), dim=-1)
 
-    y = y.reshape(1, 1).repeat(beam_length, 1) # (beam, 1)
-    log_p = torch.zeros(beam_length).to(y.device)
+    y_pred = decode(y.reshape(1, 1))[0, -1, :] # (vocab)
+    log_p, new_token = torch.topk(y_pred, beam_length) # (beam, )
+    y = torch.cat([y.repeat(beam_length, 1), new_token.unsqueeze(-1)], dim=-1) # (beam, 2)
 
-    for t in range(y_tar.size(0)):
+    for t in range(1, y_tar.size(0)):
         with torch.no_grad():
 
             # expand beams
