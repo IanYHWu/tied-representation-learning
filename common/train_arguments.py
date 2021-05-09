@@ -162,6 +162,12 @@ _train_parser.add_argument(
     help='Add epochs to train. Used for checkpointing'
 )
 
+# for extra printing
+_train_parser.add_argument(
+    '--FLAGS', action='store_true',
+    help='print where in the training cycle the script is.'
+)
+
 class train_parser:
 
     @staticmethod
