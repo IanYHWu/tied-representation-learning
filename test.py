@@ -62,7 +62,7 @@ def single_beam_search(x, y, max_len, model, enc_mask=None, beam_length=2, alpha
     cp = beta * torch.log(torch.clamp(attn_weights, min=1.0)).sum(-1) # (1,)
 
     # lp
-    lp = ((y.size(1) + 5) ** alpha) / (6 ** alpha) # (1, vocab)
+    lp = 1.0
 
     # s
     s = (y_pred / lp + cp.unsqueeze(-1)).reshape(-1) # (vocab)
