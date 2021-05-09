@@ -62,7 +62,7 @@ def single_beam_search(x, y, max_len, model, enc_mask=None, beam_length=2, alpha
     cp = beta * torch.log(torch.clamp(attn_weights, min=1.0)).sum(-1) # (1,)
 
     # lp
-    lp = ((y_tar.size(0) + 5) ** alpha) / (6 ** alpha) # (1, vocab)
+    lp = ((y.size(1) + 5) ** alpha) / (6 ** alpha) # (1, vocab)
 
     # s
     s = (y_pred / lp + cp.unsqueeze(-1)).reshape(-1) # (vocab)
@@ -83,7 +83,7 @@ def single_beam_search(x, y, max_len, model, enc_mask=None, beam_length=2, alpha
             # compute score
             attn_weights = attn_weights[attn_block].mean(1).sum(1) # (beam, x_len)
             cp = beta * torch.log(torch.clamp(attn_weights, min=1.0)).sum(-1) # (beam,)
-            lp = ((y_tar.size(0) + 5) ** alpha) / (6 ** alpha) # (beam, vocab)
+            lp = ((y.size(1) + 5) ** alpha) / (6 ** alpha) # (beam, vocab)
             s = (new_log_p / lp + cp.unsqueeze(-1)).reshape(-1) # (beam * vocab)
 
             # trim beams
