@@ -38,11 +38,11 @@ def greedy_search(x, y, y_tar, model, enc_mask=None):
     return torch.cat(y_pred, dim=1)
 
 
-def single_beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2, alpha=0.0, beta=0.0):
+def single_beam_search(x, y, max_len, model, enc_mask=None, beam_length=2, alpha=0.0, beta=0.0):
     """
     x : (seq_len)
     y : ([]) tensor of start token
-    max_len maximum length greater than the length of x to consider
+    max_len : legnth to decode to 
     """
     attn_block = 'decoder_layer' + str(model.num_layers) + '_block2'
 
@@ -72,7 +72,7 @@ def single_beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2, alpha=0
     log_p = y_pred[0][new_token]
     y = torch.cat([y.repeat(beam_length, 1), new_token.unsqueeze(-1)], dim=-1) # (beam, 2)
 
-    for t in range(1, y_tar.size(0)):
+    for t in range(1, max_len):
         with torch.no_grad():
 
             # expand beams
@@ -100,19 +100,21 @@ def single_beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2, alpha=0
     return y[1:]
     
 
-def beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2):
+def beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2, alpha=0.0, beta=0.0):
     preds = []
     for i in range(x.size(0)):
         enc_mask_i = enc_mask[i] if enc_mask is not None else None
         preds.append(single_beam_search(
-            x[i], y[i], y_tar[i], model,
-            enc_mask=enc_mask_i, beam_length=beam_length)
+            x[i], y[i], y_tar.size(1), model,
+            enc_mask=enc_mask_i, beam_length=beam_length,
+            alpha=alpha, beta=beta)
         )
     return torch.stack(preds, dim=0)
 
 
 def inference_step(x, y, model, logger, tokenizer, device, bleu=None,
-                   teacher_forcing=False, pivot_mode=False, beam_length=1):
+                   teacher_forcing=False, pivot_mode=False, beam_length=1,
+                   alpha=0.0, beta=0.0):
     """
     inference step.
     x: source language
@@ -153,7 +155,8 @@ def inference_step(x, y, model, logger, tokenizer, device, bleu=None,
         if beam_length == 1:
             y_pred = greedy_search(x, y, y_tar, model, enc_mask=enc_mask)
         else:
-            y_pred = beam_search(x, y, y_tar, model, enc_mask=enc_mask, beam_length=beam_length)
+            y_pred = beam_search(x, y, y_tar, model, enc_mask=enc_mask, beam_length=beam_length,
+                alpha=alpha, beta=beta)
 
         if not pivot_mode:
             batch_acc = 0
@@ -189,7 +192,8 @@ def test(device, params, test_dataloader, tokenizer, verbose=50):
         x, y = data
         test_batch_acc = inference_step(x, y, model, logger, tokenizer, device, bleu=bleu,
                                         teacher_forcing=params.teacher_forcing,
-                                        beam_length=params.beam_length)
+                                        beam_length=params.beam_length,
+                                        alpha=params.alpha, beta=params.beta)
         test_batch_accs.append(test_batch_acc)
 
         test_acc += (test_batch_acc - test_acc) / (i + 1)
