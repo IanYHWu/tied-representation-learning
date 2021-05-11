@@ -14,7 +14,7 @@ import datasets
 from tokenizers import Tokenizer
 from tokenizers.models import BPE
 from tokenizers.trainers import BpeTrainer
-from tokenizers.pre_tokenizers import Whitespace
+from tokenizers.pre_tokenizers import BertPreTokenizer
 from tokenizers.processors import TemplateProcessing
 from common.utils import remove_after_stop
 
@@ -71,7 +71,7 @@ def train_tokenizer(langs, dataset, vocab_size):
         vocab_size=vocab_size)
 
     # pre tokenizer with whitespace
-    tokenizer.pre_tokenizer = Whitespace()
+    tokenizer.pre_tokenizer = BertPreTokenizer()
 
     # create iterator and train
     iterator = _MultilingualIterator(dataset, langs)
