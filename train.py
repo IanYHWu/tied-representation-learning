@@ -149,6 +149,7 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
                 bleu = BLEU()
                 bleu.set_excluded_indices([0, 2])
                 for i, data in enumerate(val_dataloader):
+                    
                     if multi:
                         # sample a tranlsation direction and add target tokens
                         (x, y), (x_lang, y_lang) = sample_direction(data, params.langs, excluded=params.excluded)
@@ -169,30 +170,33 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
                 val_bleu = bleu.get_metric()
 
                 # evaluate without teacher forcing
-                if params.test_freq is not None and params.test_freq % epoch == 0:
-                    bleu_no_tf = BLEU()
-                    bleu_no_tf.set_excluded_indices([0, 2])
-                    for i, data in enumerate(val_dataloader):
-                        if i > params.test_batches:
-                            break
-                        else:
-                            if multi:
-                                # sample a tranlsation direction and add target tokens
-                                (x, y), (x_lang, y_lang) = sample_direction(data, params.langs, excluded=params.excluded)
-                                x = add_targets(x, y_lang)
+                if params.test_freq is not None:
+                    if epoch % params.test_freq == 0:
+                        bleu_no_tf = BLEU()
+                        bleu_no_tf.set_excluded_indices([0, 2])
+                        for i, data in enumerate(val_dataloader):
+                            if i > params.test_batches:
+                                break
                             else:
-                                x, y = data
+                                if multi:
+                                    # sample a tranlsation direction and add target tokens
+                                    (x, y), (x_lang, y_lang) = sample_direction(data, params.langs, excluded=params.excluded)
+                                    x = add_targets(x, y_lang)
+                                else:
+                                    x, y = data
 
-                            y, y_tar = y[:, 0].unsqueeze(-1), y[:, 1:]
-                            enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_tar)
+                                y, y_tar = y[:, 0].unsqueeze(-1), y[:, 1:]
+                                enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_tar)
 
-                            # devices
-                            x, y, y_tar, enc_mask = to_devices((x, y, y_tar, enc_mask), device)
+                                # devices
+                                x, y, y_tar, enc_mask = to_devices((x, y, y_tar, enc_mask), device)
 
-                            y_pred = beam_search(x, y, y_tar, model, enc_mask=enc_mask,
-                                beam_length=params.beam_length, alpha=params.alpha, beta=params.beta)
-                            bleu_no_tf(y_pred, y_tar)
-                            test_bleu = bleu_no_tf.get_metric()
+                                y_pred = beam_search(x, y, y_tar, model, enc_mask=enc_mask,
+                                    beam_length=params.beam_length, alpha=params.alpha, beta=params.beta)
+                                bleu_no_tf(y_pred, y_tar)
+                            
+                        test_bleu = bleu_no_tf.get_metric()
+                        print(test_bleu)
 
                 if verbose is not None:
                     print('Epoch {} Loss {:.4f} Aux Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
