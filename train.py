@@ -22,128 +22,13 @@ from hyperparams.loader import Loader
 from hyperparams.schedule import WarmupDecay
 from common.metrics import BLEU
 from common.utils import to_devices, accuracy_fn, loss_fn, auxiliary_loss_fn, sample_direction, get_direction
+from common.functional import train_step, val_step, param_freeze, aux_train_step, beam_search
 
 
 def seed_all(SEED):
     """ Set the seed for all devices. """
     torch.cuda.manual_seed_all(SEED)
     np.random.seed(SEED)
-
-
-def train_step(x, y, model, criterion, aux_criterion, optimizer, scheduler, device, distributed=False):
-    # get masks and targets
-    y_inp, y_tar = y[:, :-1], y[:, 1:]
-    enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
-
-    # mask for the target language encoded representation.
-    enc_mask_aux = base_transformer.create_mask(y_inp)
-
-    # devices
-    x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux = to_devices(
-        (x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux),
-        device, non_blocking=distributed)
-
-    # forward
-    model.train()
-    x_enc = model.encode(x, enc_mask)
-    y_enc = model.encode(y_inp, enc_mask_aux)
-    y_pred = model.final_layer(model.decode(y_inp, x_enc, look_ahead_mask, dec_mask)[0])
-    loss = loss_fn(y_pred.permute(0, 2, 1), y_tar, criterion)
-
-    # backward
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-    scheduler.step()
-
-    with torch.no_grad():
-        loss_aux = auxiliary_loss_fn(x_enc, y_enc, aux_criterion, x_mask=enc_mask, y_mask=enc_mask_aux)
-
-    # metrics
-    batch_loss = loss.detach()
-    batch_aux = loss_aux
-    batch_acc = accuracy_fn(y_pred.detach(), y_tar)
-
-    return batch_loss, batch_aux, batch_acc
-
-
-def param_freeze(model, frozen_layers, unfreeze=False):
-    """freeze parameters of encoder layers for any layer in frozen_layers."""
-    for i, layer in enumerate(model.encoder.enc_layers):
-        if i in frozen_layers:
-            for param in layer.parameters():
-                param.requires_grad = unfreeze
-    return model
-
-
-def aux_train_step(x, y, model, criterion, aux_criterion, aux_strength, frozen_layers,
-    optimizer, scheduler, device, distributed=False):
-    """ Single training step using an auxiliary loss on the encoder outputs."""
-
-    # get masks and targets
-    y_inp, y_tar = y[:, :-1], y[:, 1:]
-    enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
-
-    # mask for the target language encoded representation.
-    enc_mask_aux = base_transformer.create_mask(y_inp)
-
-    # devices
-    x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux = to_devices(
-        (x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask, enc_mask_aux),
-        device, non_blocking=distributed)
-
-    model.train()
-    optimizer.zero_grad()
-
-    x_enc = model.encode(x, enc_mask)
-    y_pred = model.final_layer(model.decode(y_inp, x_enc, look_ahead_mask, dec_mask)[0])
-    y_enc = model.encode(y_inp, enc_mask_aux)
-
-    # main loss.
-    loss_main = loss_fn(y_pred.permute(0, 2, 1), y_tar, criterion)
-    loss_main.backward(retain_graph=True)
-
-    # aux loss
-    model = param_freeze(model, frozen_layers)
-    loss_aux = auxiliary_loss_fn(x_enc, y_enc, aux_criterion, x_mask=enc_mask, y_mask=enc_mask_aux)
-    scaled_loss_aux = loss_aux * aux_strength
-    scaled_loss_aux.backward()
-
-    optimizer.step()
-    scheduler.step()
-    model = param_freeze(model, frozen_layers, unfreeze=True)
-
-    # metrics
-    batch_loss = loss_main.detach()
-    batch_aux = loss_aux.detach()
-    batch_acc = accuracy_fn(y_pred.detach(), y_tar)
-
-    return batch_loss, batch_aux, batch_acc
-
-
-def val_step(x, y, model, criterion, bleu, device, distributed=False):
-    # get masks and targets
-    y_inp, y_tar = y[:, :-1], y[:, 1:]
-    enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
-
-    # devices
-    x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask = to_devices(
-        (x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask),
-        device, non_blocking=distributed)
-
-    # forward
-    model.eval()
-    with torch.no_grad():
-        y_pred, _ = model(x, y_inp, enc_mask, look_ahead_mask, dec_mask)
-        loss = loss_fn(y_pred.permute(0, 2, 1), y_tar, criterion)
-
-    # metrics
-    batch_loss = loss.detach()
-    batch_acc = accuracy_fn(y_pred.detach(), y_tar)
-
-    bleu(torch.argmax(y_pred, axis=-1), y_tar)
-
-    return batch_loss, batch_acc
 
 
 def setup(params):
@@ -259,6 +144,7 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
             val_epoch_loss = 0.0
             val_epoch_acc = 0.0
             val_bleu = 0.0
+            test_bleu = 0.0
             if val_dataloader is not None:
                 bleu = BLEU()
                 bleu.set_excluded_indices([0, 2])
@@ -282,25 +168,50 @@ def train(rank, device, logger, params, train_dataloader, val_dataloader=None, t
                 val_epoch_accs.append(val_epoch_acc)
                 val_bleu = bleu.get_metric()
 
+                # evaluate without teacher forcing
+                if params.test_freq is not None and params.test_freq % epoch == 0:
+                    bleu_no_tf = BLEU()
+                    bleu_no_tf.set_excluded_indices([0, 2])
+                    for i, data in enumerate(val_dataloader):
+                        if i > params.test_batches:
+                            break
+                        else:
+                            if multi:
+                                # sample a tranlsation direction and add target tokens
+                                (x, y), (x_lang, y_lang) = sample_direction(data, params.langs, excluded=params.excluded)
+                                x = add_targets(x, y_lang)
+                            else:
+                                x, y = data
+
+                            y, y_tar = y[:, 0].unsqueeze(-1), y[:, 1:]
+                            enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_tar)
+
+                            # devices
+                            x, y, y_tar, enc_mask = to_devices((x, y, y_tar, enc_mask), device)
+
+                            y_pred = beam_search(x, y, y_tar, model, enc_mask=enc_mask,
+                                beam_length=params.beam_length, alpha=params.alpha, beta=params.beta)
+                            bleu_no_tf(y_pred, y_tar)
+                            test_bleu = bleu_no_tf.get_metric()
+
                 if verbose is not None:
                     print('Epoch {} Loss {:.4f} Aux Loss {:.4f} Accuracy {:.4f} Val Loss {:.4f} Val Accuracy {:.4f} Val Bleu {:.4f}'
-                          ' in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_aux, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu,
-                                                      time.time() - start_))
+                          ' Test Bleu {:.4f} in {:.4f} secs \n'.format(epoch, epoch_loss, epoch_aux, epoch_acc, val_epoch_loss,
+                            val_epoch_acc, val_bleu, test_bleu, time.time() - start_))
                 if params.wandb:
                     wandb.log({'loss': epoch_loss, 'aux_loss': epoch_aux, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
-                               'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu})
+                               'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu, 'test_bleu':test_bleu})
             else:
                 if verbose is not None:
                     print('Epoch {} Loss {:.4f} Aux Loss {:.4f} Accuracy {:.4f} in {:.4f} secs \n'.format(
                         epoch, epoch_loss, epoch_loss, epoch_acc, time.time() - start_))
                 if params.wandb:
-                    wandb.log({'loss': epoch_loss, 'aux_loss': epoch_aux, 'accuracy': epoch_acc, 'val_loss': val_epoch_loss,
-                               'val_accuracy': val_epoch_acc, 'val_bleu': val_bleu})
+                    wandb.log({'loss': epoch_loss, 'aux_loss': epoch_aux, 'accuracy': epoch_acc})
 
             if params.FLAGS:
                 print('logging results')
             logger.save_model(epoch, model, optimizer, scheduler=scheduler)
-            logger.log_results([epoch_loss, epoch_aux, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu])
+            logger.log_results([epoch_loss, epoch_aux, epoch_acc, val_epoch_loss, val_epoch_acc, val_bleu, test_bleu])
             
         epoch += 1
 
