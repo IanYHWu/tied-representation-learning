@@ -85,7 +85,7 @@ _train_parser.add_argument(
 )
 _train_parser.add_argument(
     '--beta', default=0.0,
-    type=int, help='Beam search hyperparameter.'
+    type=float, help='Beam search hyperparameter.'
 )
 
 
