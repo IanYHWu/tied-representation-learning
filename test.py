@@ -15,131 +15,8 @@ from common.metrics import BLEU
 from common import preprocess
 from common.test_arguments import test_parser
 from hyperparams.loader import Loader
-from common.utils import to_devices, accuracy_fn, mask_after_stop, get_all_directions, get_pairs, get_directions
-
-
-def greedy_search(x, y, y_tar, model, enc_mask=None):
-    """Inference loop taking the most probable token at each step."""
-    x_enc = model.encoder(x, enc_mask)
-    y_pred = []  # List to store predictions made by model.
-
-    # loop to compute output of decoder without teacher forcing
-    for t in range(y_tar.size(1)):
-        with torch.no_grad():
-            # Compute output of all translations up until sequence position t.
-            output = model.final_layer(model.decoder(y, x_enc, None, None)[0])
-            # Take most recently computed time step.
-            output = output[:, -1, :].squeeze()
-            # Retrieve predicted token.
-            max_token = torch.argmax(output, dim=-1).unsqueeze(-1)
-            y = torch.cat([y, max_token], dim=1)
-            y_pred.append(max_token)
-
-    return torch.cat(y_pred, dim=1)
-
-
-def single_beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2):
-    """
-    x : (seq_len)
-    y : ([]) tensor of start token
-    max_len maximum length greater than the length of x to consider
-    """
-
-    if enc_mask is not None:
-        enc_mask.unsqueeze(0)
-
-    x_enc = model.encoder(x.unsqueeze(0), enc_mask) # (1, seq_len, d_model)
-    x_enc = x_enc.repeat(beam_length, 1, 1) # (beam, seq_len, d_model)
-    decode = lambda y: F.log_softmax(model.final_layer(model.decoder(y, x_enc, None, None)[0]), dim=-1)
-
-    y_pred = decode(y.reshape(1, 1))[0, -1, :] # (vocab)
-    log_p, new_token = torch.topk(y_pred, beam_length) # (beam, )
-    y = torch.cat([y.repeat(beam_length, 1), new_token.unsqueeze(-1)], dim=-1) # (beam, 2)
-
-    for t in range(1, y_tar.size(0)):
-        with torch.no_grad():
-
-            # expand beams
-            y_pred = decode(y)[:, -1, :] # (beam, vocab)
-            new_log_p = (log_p.unsqueeze(-1) + y_pred).reshape(-1) # (beam * vocab)
-
-            # trim beams
-            log_p, beam_idxs = torch.topk(new_log_p, beam_length) # (beam,)
-            beam_id, new_token = beam_idxs // y_pred.size(-1), beam_idxs % y_pred.size(-1)
-
-            # update input
-            y = torch.cat([y[beam_id], new_token.unsqueeze(-1)], dim=-1)
-
-    best_beam = log_p.argmax()
-    y = y[best_beam]
-
-    return y[1:]
-    
-
-def beam_search(x, y, y_tar, model, enc_mask=None, beam_length=2):
-    preds = []
-    for i in range(x.size(0)):
-        enc_mask_i = enc_mask[i] if enc_mask is not None else None
-        preds.append(single_beam_search(
-            x[i], y[i], y_tar[i], model,
-            enc_mask=enc_mask_i, beam_length=beam_length)
-        )
-    return torch.stack(preds, dim=0)
-
-
-def inference_step(x, y, model, logger, tokenizer, device, bleu=None,
-                   teacher_forcing=False, pivot_mode=False, beam_length=1):
-    """
-    inference step.
-    x: source language
-    y: target language
-    """
-    if teacher_forcing:
-        y_inp, y_tar = y[:, :-1], y[:, 1:]
-        enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_inp)
-
-        # devices
-        x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask = to_devices(
-            (x, y_inp, y_tar, enc_mask, look_ahead_mask, dec_mask),
-            device)
-
-        # inference
-        model.eval()
-        with torch.no_grad():
-            y_pred, _ = model(x, y_inp, enc_mask, look_ahead_mask, dec_mask)
-
-        if not pivot_mode:
-            batch_acc = accuracy_fn(y_pred.detach(), y_tar).cpu().item()
-            bleu(torch.argmax(y_pred, axis=-1), y_tar)
-            logger.log_examples(x, y_tar, torch.argmax(y_pred, axis=-1), tokenizer)
-            return batch_acc
-        else:
-            return torch.argmax(y_pred, axis=-1)
-
-    else:
-        # Retrieve the start of sequence token and the target translation
-        y, y_tar = y[:, 0].unsqueeze(-1), y[:, 1:]
-        enc_mask, look_ahead_mask, dec_mask = base_transformer.create_masks(x, y_tar)
-
-        # devices
-        x, y, y_tar, enc_mask = to_devices((x, y, y_tar, enc_mask), device)
-
-        # inference
-        model.eval()
-        if beam_length == 1:
-            y_pred = greedy_search(x, y, y_tar, model, enc_mask=enc_mask)
-        else:
-            y_pred = beam_search(x, y, y_tar, model, enc_mask=enc_mask, beam_length=beam_length)
-
-        if not pivot_mode:
-            batch_acc = 0
-            if bleu is not None:
-                bleu(y_pred, y_tar)
-            logger.log_examples(x, y_tar, y_pred, tokenizer)
-            return batch_acc
-        else:
-            return y_pred
-
+from common.utils import get_pairs, get_directions
+from common.functional import inference_step
 
 def test(device, params, test_dataloader, tokenizer, verbose=50):
     """Test loop"""
@@ -165,7 +42,8 @@ def test(device, params, test_dataloader, tokenizer, verbose=50):
         x, y = data
         test_batch_acc = inference_step(x, y, model, logger, tokenizer, device, bleu=bleu,
                                         teacher_forcing=params.teacher_forcing,
-                                        beam_length=params.beam_length)
+                                        beam_length=params.beam_length,
+                                        alpha=params.alpha, beta=params.beta)
         test_batch_accs.append(test_batch_acc)
 
         test_acc += (test_batch_acc - test_acc) / (i + 1)

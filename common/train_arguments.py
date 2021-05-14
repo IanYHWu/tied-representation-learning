@@ -65,6 +65,30 @@ _train_parser.add_argument(
     type=str, help='Tokenizer(s) in pretrained to use.'
 )
 
+
+#### for no tf testing
+_train_parser.add_argument(
+    '--test_freq', default=None,
+    type=int, help='Frequency of no tf testing.'
+)
+_train_parser.add_argument(
+    '--test_batches', default=50,
+    type=int, help='Number of batches to test without tf.'
+)
+_train_parser.add_argument(
+    '--beam_length', default=4,
+    type=int, help='Beam length for no tf testing.'
+)
+_train_parser.add_argument(
+    '--alpha', default=0.0,
+    type=float, help='Beam search hyperparameter.'
+)
+_train_parser.add_argument(
+    '--beta', default=0.0,
+    type=float, help='Beam search hyperparameter.'
+)
+
+
 ##### distributed training args
 _train_parser.add_argument(
     '--distributed', action='store_true',
@@ -160,6 +184,12 @@ _train_parser.add_argument(
 _train_parser.add_argument(
     '--add_epochs', default=0, type=int,
     help='Add epochs to train. Used for checkpointing'
+)
+
+# for extra printing
+_train_parser.add_argument(
+    '--FLAGS', action='store_true',
+    help='print where in the training cycle the script is.'
 )
 
 class train_parser:

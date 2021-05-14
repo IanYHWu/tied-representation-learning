@@ -59,6 +59,14 @@ _test_parser.add_argument(
     type=int, help='Clip sequences to maximum length.'
 )
 _test_parser.add_argument(
+    '--alpha', default=0.0,
+    type=float, help='Beam search hyperparameter.'
+)
+_test_parser.add_argument(
+    '--beta', default=0.0,
+    type=float, help='Beam search hyperparameter.'
+)
+_test_parser.add_argument(
     '--excluded', nargs='+', default=[],
     type=str, help='Pairs of languages to exclude\
     from training. Should be passed as a list which\
