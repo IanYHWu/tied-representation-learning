@@ -55,7 +55,6 @@ def main(params):
     model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50").to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=params.lr)
 
-    from common.preprocess import pad_sequence, filter_languages
     def pipeline(dataset, langs, batch_size, max_len):
 
         cols = ['input_ids_' + l for l in langs]
@@ -156,7 +155,9 @@ def main(params):
     if params.save:
         logger.save_model(params.train_steps, model, optimizer)
     
-    logger.log_results([np.mean(losses), np.mean(accs)])
+    train_results = {'loss':[np.mean(losses)], 'accuarcy':[np.mean(accs)]}
+    pd.DataFrame(train_results).to_csv(logger.root_path + '/train_results.csv', index=False)
+
 
     # evaluate the model
     def evaluate(x, y, y_code, bleu):
@@ -176,8 +177,8 @@ def main(params):
         bleu1, bleu2 = BLEU(), BLEU()
         bleu1.set_excluded_indices([0, 2])
         bleu2.set_excluded_indices([0, 2])
-        x_code = tokenizer.lang_code_to_id(LANG_CODES[direction.split('-')[0]])
-        y_code = tokenizer.lang_code_to_id(LANG_CODES[direction.split('-')[-1]])
+        x_code = tokenizer.lang_code_to_id[LANG_CODES[direction.split('-')[0]]]
+        y_code = tokenizer.lang_code_to_id[LANG_CODES[direction.split('-')[-1]]]
 
         for x, y in loader:
             evaluate(x, y, y_code, bleu1)
@@ -242,5 +243,5 @@ if __name__ == '__main__':
     )
 
     params = parser.parse_args()
-    #main(params)
+    main(params)
 
