@@ -14,7 +14,9 @@ import datasets
 from tokenizers import Tokenizer
 from tokenizers.models import BPE
 from tokenizers.trainers import BpeTrainer
-from tokenizers.pre_tokenizers import Whitespace
+from tokenizers.normalizers import Lowercase, NFD, StripAccents, Sequence
+from tokenizers import pre_tokenizers
+from tokenizers import decoders
 from tokenizers.processors import TemplateProcessing
 from common.utils import remove_after_stop
 
@@ -70,8 +72,10 @@ def train_tokenizer(langs, dataset, vocab_size):
         special_tokens=special_tokens,
         vocab_size=vocab_size)
 
-    # pre tokenizer with whitespace
-    tokenizer.pre_tokenizer = Whitespace()
+    # normalise and pre tokenize
+    tokenizer.normalizer = Sequence([NFD(), Lowercase(), StripAccents()])
+    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel()
+    tokenizer.decoder = decoders.ByteLevel()
 
     # create iterator and train
     iterator = _MultilingualIterator(dataset, langs)
