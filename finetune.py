@@ -16,22 +16,44 @@ from common import data_logger as logging
 # mapping ted to mBart lang codes
 LANG_CODES = {
     'ar' : 'ar_AR', # Arabic
+    'az' : 'az_AZ', # Azerbaijani
+    'bn' : 'bn_IN', # Bengali
     'cs' : 'cs_CZ', # Czech
-    'en' : 'en_XX', # English
-    'fr' : 'fr_XX', # French
     'de' : 'de_DE', # German
+    'en' : 'en_XX', # English
+    'es' : 'es_XX', # Spanish
+    'et' : 'et_EE', # Estonian
+    'fi' : 'fi_FI', # Finish
+    'fr' : 'fr_XX', # French
+    'gl' : 'gl_ES', # Galician
     'he' : 'he_IL', # Hebrew
+    'hi' : 'hi_IN', # Hindi
+    'hr' : 'hr_HR', # Croation
     'id' : 'id_ID', # Indonesian
+    'it' : 'it_IT', # Italian
     'ja' : 'ja_XX', # Japense
+    'ka' : 'ka_GE', # Georgian
+    'kk' : 'kk_KZ', # Kazakh
     'ko' : 'ko_KR', # Korean
+    'lt' : 'lt_LT', # Lithuanian
+    'mk' : 'mk_MK', # Macedonian
+    'mn' : 'mn_MN', # Mongolian
+    'mr' : 'mr_IN', # Marathi
+    'my' : 'my_MM', # Burmese
+    'nl' : 'nl_XX', # Dutch
     'pl' : 'pl_PL', # Polish
     'pt' : 'pt_XX', # Portugese
     'ro' : 'ro_RO', # Romanian
     'ru' : 'ru_RU', # Russian
+    'sl' : 'sl_SI', # Slovene
+    'sv' : 'sv_SE', # Swedish
+    'ta' : 'ta_IN', # Tamil
+    'th' : 'th_TH', # Thai
     'tr' : 'tr_TR', # Turkish
     'uk' : 'uk_UA', # Ukranian
+    'ur' : 'ur_PK', # Urdu
     'vi' : 'vi_VN', # Vietnamese
-    'zh' : 'zh_CN' # Chinese
+    'zh' : 'zh_CN', # Chinese
 }
 
 
@@ -168,7 +190,8 @@ def main(params):
         
         model.eval()
         y_pred = model.generate(input_ids=x, decoder_start_token_id=y_code,
-            attention_mask=enc_mask, max_length=params.max_len+1)
+            attention_mask=enc_mask, max_length=params.max_len+1,
+            num_beams=params.num_beams, length_penalty=params.length_penalty)
         bleu(y_pred[:,1:], y_tar)
 
     test_results = {}
@@ -180,9 +203,11 @@ def main(params):
         x_code = tokenizer.lang_code_to_id[LANG_CODES[direction.split('-')[0]]]
         y_code = tokenizer.lang_code_to_id[LANG_CODES[direction.split('-')[-1]]]
 
-        for x, y in loader:
+        for i, (x, y) in enumerate(loader):
             evaluate(x, y, y_code, bleu1)
             evaluate(y, x, x_code, bleu2)
+            if i % params.verbose == 0:
+                print('Batch {} Bleu1 {:.4f} Bleu2 {:.4f}'.format(i, bleu1.get_metric(), bleu2.get_metric()))
 
         test_results[direction] = [bleu1.get_metric()]
         test_results[alt_direction] = [bleu2.get_metric()]
@@ -240,6 +265,14 @@ if __name__ == '__main__':
     parser.add_argument('--save',
         action='store_true',
         help='wether to save model after training.'
+    )
+    parser.add_argument('--num_beams',
+        default=5, type=int,
+        help='Number of beams for decoding.'
+    )
+    parser.add_argument('--length_penalty',
+        default=0.6, type=float,
+        help='Length penalty for decoding.'
     )
 
     params = parser.parse_args()
