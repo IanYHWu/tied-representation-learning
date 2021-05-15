@@ -26,7 +26,7 @@ parser.add_argument('--max_len',
     default=100, type=int,
     help='Maximum length of sequences.'
 )
-parser.add_argument('--single_directions',
+parser.add_argument('--single_direction',
     action='store_true',
     help='Wether to only train on one way (for bilingual mode).'
 )
