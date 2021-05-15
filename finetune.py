@@ -11,6 +11,7 @@ from common.preprocess import pad_sequence, filter_languages
 from common.utils import accuracy_fn, to_devices
 from common.metrics import BLEU
 from common import data_logger as logging
+from hyperparams.schedule import WarmupDecay
 
 
 # mapping ted to mBart lang codes
@@ -56,6 +57,17 @@ LANG_CODES = {
     'zh' : 'zh_CN', # Chinese
 }
 
+def get_direction(x, y, sample=False):
+    """ Samples a training direction from two sequences
+    or returns the standard direction. """
+    if sample:
+        if np.random.rand() > 0.5:
+            return x, y
+        else:
+            return y, x
+    else:
+        return x, y
+
 
 def main(params):
     """ Finetunes the mBart50 model on some languages and
@@ -76,6 +88,14 @@ def main(params):
     tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50")
     model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50").to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=params.lr)
+
+    # scale in terms of max lr
+    lr_scale = params.max_lr * np.sqrt(params.warmup_steps)
+    scheduler = WarmupDecay(optimizer, params.warmup_steps, 1, lr_scale=lr_scale)
+
+    # set dropout
+    model.config.dropout = params.dropout 
+    model.config.attention_dropout = params.dropout
 
     def pipeline(dataset, langs, batch_size, max_len):
 
@@ -141,6 +161,7 @@ def main(params):
         optimizer.zero_grad()
         output.loss.backward()
         optimizer.step()
+        scheduler.step()
 
         accuracy = accuracy_fn(output.logits, y_tar)
 
@@ -156,11 +177,8 @@ def main(params):
     for i in range(params.train_steps):
 
         # sample a direction
-        data = next(iterators[directions[int(np.random.choice(len(num_examples), p=dir_dist))]])
-        if np.random.rand() > 0.5:
-          x, y = data 
-        else:
-          y, x = data 
+        x, y = next(iterators[directions[int(np.random.choice(len(num_examples), p=dir_dist))]])
+        x, y = get_direction(x, y, sample=~params.single_direction)
            
         # train on the direction
         loss, acc = train_step(x, y)
@@ -175,7 +193,7 @@ def main(params):
 
     # save results
     if params.save:
-        logger.save_model(params.train_steps, model, optimizer)
+        logger.save_model(params.train_steps, model, optimizer, scheduler=scheduler)
     
     train_results = {'loss':[np.mean(losses)], 'accuarcy':[np.mean(accs)]}
     pd.DataFrame(train_results).to_csv(logger.root_path + '/train_results.csv', index=False)
@@ -205,7 +223,8 @@ def main(params):
 
         for i, (x, y) in enumerate(loader):
             evaluate(x, y, y_code, bleu1)
-            evaluate(y, x, x_code, bleu2)
+            if not params.single_direction:
+                evaluate(y, x, x_code, bleu2)
             if i % params.verbose == 0:
                 print('Batch {} Bleu1 {:.4f} Bleu2 {:.4f}'.format(i, bleu1.get_metric(), bleu2.get_metric()))
 
@@ -218,63 +237,7 @@ def main(params):
 
 if __name__ == '__main__':
 
-    import argparse
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument('--name',
-        required=True, type=str,
-        help='Name of run.'
-    )
-
-    parser.add_argument('--location',
-        default='..', type=str,
-        help='File path for saving results.'
-    )
-    parser.add_argument('--langs',
-        default=['en', 'fr'], nargs='+',
-        help='Ted language codes for languages to train on.'
-    )
-    parser.add_argument('--batch_size',
-        default=6, type=int,
-        help='Dataloader batch size.'
-    )
-    parser.add_argument('--max_len',
-        default=100, type=int,
-        help='Maximum length of sequences.'
-    )
-    parser.add_argument('--train_steps',
-        default=5000, type=int,
-        help='Total number of training steps.'
-    )
-    parser.add_argument('--lr',
-        default=1e-4, type=float,
-        help='Finetuning learning rate.'
-    )
-    parser.add_argument('--temp',
-        default=1.0, type=float,
-        help='Sampling temperature for relative language sizes.'
-    )
-    parser.add_argument('--verbose',
-        default=20, type=int,
-        help='Frequency to print during training.'
-    )
-    parser.add_argument('--wandb',
-        action='store_true',
-        help='wether to log results to wandb.'
-    )
-    parser.add_argument('--save',
-        action='store_true',
-        help='wether to save model after training.'
-    )
-    parser.add_argument('--num_beams',
-        default=5, type=int,
-        help='Number of beams for decoding.'
-    )
-    parser.add_argument('--length_penalty',
-        default=0.6, type=float,
-        help='Length penalty for decoding.'
-    )
-
+    from common.finetune_arguments import parser
     params = parser.parse_args()
     main(params)
 
