@@ -28,7 +28,7 @@ parser.add_argument('--max_len',
 )
 parser.add_argument('--single_direction',
     action='store_true',
-    help='Wether to only train on one way (for bilingual mode).'
+    help='Whether to only train on one way (for bilingual mode).'
 )
 
 #### Optimization
@@ -46,11 +46,25 @@ parser.add_argument('--max_lr',
 )
 parser.add_argument('--warmup_steps',
     default=2500, type=float,
-    help='Finetuning maximum learning rate.'
+    help='Warmup steps for learning rate.'
 )
 parser.add_argument('--dropout',
     default=0.3, type=float,
     help='Dropout and attention dropout rates.'
+)
+
+#### Auxiliary
+parser.add_argument('--auxiliary',
+    action='store_true',
+    help='Whether to use auxiliary loss.'
+)
+parser.add_argument('--frozen_layers',
+    default=[], n_args='+',
+    help='Indicies of frozen layers.'
+)
+parser.add_argument('--aux_strength',
+    default=1e-3, type=float,
+    help='Relative strength of aux regularisation.'
 )
 
 #### Verbosity

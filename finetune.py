@@ -5,7 +5,7 @@ import pandas as pd
 import wandb
 from transformers import MBart50TokenizerFast, MBartForConditionalGeneration
 from datasets import load_dataset
-from itertools import combinations, repeat
+from itertools import combinations
 import time
 
 from common.preprocess import pad_sequence, filter_languages
@@ -57,6 +57,7 @@ LANG_CODES = {
     'vi' : 'vi_VN', # Vietnamese
     'zh' : 'zh_CN', # Chinese
 }
+
 
 def get_direction(x, y, sample=False):
     """ Samples a training direction from two sequences
@@ -146,8 +147,14 @@ def main(params):
     for direction, num in num_train_examples.items():
         print(direction, ': {} examples.'.format(num))
 
+    def freeze_layers(layers, unfreeze=False):
+        for n in layers:
+            for parameter in model.model.encoder.layers[n].parameters():
+                parameter.requires_grad = unfreeze
+
     # train the model
-    def train_step(x, y):
+    _target = torch.tensor(1.0)
+    def train_step(x, y, aux=False):
 
         y_inp, y_tar = y[:,:-1].contiguous(), y[:,1:].contiguous()
         enc_mask, dec_mask = (x != 0), (y_inp != 0)
@@ -156,17 +163,27 @@ def main(params):
           (x, y_inp, y_tar, enc_mask, dec_mask), device)
 
         model.train()
+        if aux: freeze_layers(params.frozen_layers, unfreeze=True)
         output = model(input_ids=x, decoder_input_ids=y_inp,
                    labels=y_tar, attention_mask=enc_mask,
                    decoder_attention_mask=dec_mask)
         optimizer.zero_grad()
-        output.loss.backward()
+        output.loss.backward(retain_graph=aux)
         optimizer.step()
         scheduler.step()
 
+        if aux: freeze_layers(params.frozen_layers)
+        x_enc = output.encoder_last_hidden_state
+        y_enc = model.model.encoder(y_inp, attention_mask=dec_mask)['last_hidden_state']
+        x_enc = torch.max(x_enc + -999 * enc_mask.unsqueeze(-1), dim=1)[0]
+        y_enc = torch.max(y_enc + -999 * dec_mask.unsqueeze(-1), dim=1)[0]
+        aux_loss = F.cosine_embedding_loss(x_enc, y_enc, _target)
+        scaled_aux_loss = params.aux_strength * aux_loss
+        if aux: scaled_aux_loss.backward()
+
         accuracy = accuracy_fn(output.logits, y_tar)
 
-        return output.loss.item(), accuracy.item()
+        return output.loss.item(), aux_loss.item(), accuracy.item()
 
     # prepare iterators
     iterators = {direction: iter(loader) for direction, loader in train_dataloaders.items()}
@@ -174,7 +191,7 @@ def main(params):
     dir_dist = (num_examples ** params.temp) / ((num_examples ** params.temp).sum())
 
     #train
-    losses, accs = [], []
+    losses, aux_losses, accs = [], [], []
     start_ = time.time()
     for i in range(params.train_steps):
 
@@ -188,24 +205,24 @@ def main(params):
         x, y = get_direction(x, y, sample=~params.single_direction)
            
         # train on the direction
-        loss, acc = train_step(x, y)
+        loss, aux_loss, acc = train_step(x, y, aux=params.auxiliary)
         losses.append(loss)
+        aux_losses.append(aux_loss)
         accs.append(acc)
 
         if i % params.verbose == 0:
-            print('Batch {} Loss {:.4f} Acc {:.4f} in {:.4f} secs per batch'.format(
-                i, np.mean(losses[-params.verbose:]), np.mean(accs[-params.verbose:]),
-                (time.time() - start_)/(i+1)))
+            print('Batch {} Loss {:.4f} Aux Loss {:.4f} Acc {:.4f} in {:.4f} secs per batch'.format(
+                i, np.mean(losses[-params.verbose:]), np.mean(aux_losses[-params.verbose:]),
+                np.mean(accs[-params.verbose:]), (time.time() - start_)/(i+1)))
         if params.wandb:
-            wandb.log({'train_loss':loss, 'train_acc':acc})
+            wandb.log({'train_loss':loss, 'aux_loss':aux_loss, 'train_acc':acc})
 
     # save results
     if params.save:
         logger.save_model(params.train_steps, model, optimizer, scheduler=scheduler)
     
-    train_results = {'loss':[np.mean(losses)], 'accuarcy':[np.mean(accs)]}
+    train_results = {'loss':[np.mean(losses)], 'aux_loss':[np.mean(aux_losses)], 'accuarcy':[np.mean(accs)]}
     pd.DataFrame(train_results).to_csv(logger.root_path + '/train_results.csv', index=False)
-
 
     # evaluate the model
     def evaluate(x, y, y_code, bleu):
@@ -235,7 +252,6 @@ def main(params):
             if params.test_batches is not None:
                 if i > params.test_batches:
                     break
-            
 
             evaluate(x, y, y_code, bleu1)
             if not params.single_direction:
