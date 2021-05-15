@@ -87,7 +87,7 @@ def main(params):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50")
     model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50").to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=params.lr)
+    optimizer = torch.optim.Adam(model.parameters())
 
     # scale in terms of max lr
     lr_scale = params.max_lr * np.sqrt(params.warmup_steps)
