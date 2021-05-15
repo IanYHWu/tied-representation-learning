@@ -175,8 +175,8 @@ def main(params):
 
     #train
     losses, accs = [], []
+    start_ = time.time()
     for i in range(params.train_steps):
-        start_ = time.time()
 
         # sample a direction
         direction = directions[int(np.random.choice(len(num_examples), p=dir_dist))]
@@ -195,7 +195,7 @@ def main(params):
         if i % params.verbose == 0:
             print('Batch {} Loss {:.4f} Acc {:.4f} in {:.4f} secs per batch'.format(
                 i, np.mean(losses[-params.verbose:]), np.mean(accs[-params.verbose:]),
-                (time.time() - start_)/params.verbose))
+                (time.time() - start_)/(i+1)))
         if params.wandb:
             wandb.log({'train_loss':loss, 'train_acc':acc})
 
@@ -230,11 +230,12 @@ def main(params):
         x_code = tokenizer.lang_code_to_id[LANG_CODES[direction.split('-')[0]]]
         y_code = tokenizer.lang_code_to_id[LANG_CODES[direction.split('-')[-1]]]
 
+        start_ = time.time()
         for i, (x, y) in enumerate(loader):
             if params.test_batches is not None:
                 if i > params.test_batches:
                     break
-            start_ = time.time()
+            
 
             evaluate(x, y, y_code, bleu1)
             if not params.single_direction:
@@ -242,7 +243,7 @@ def main(params):
             if i % params.verbose == 0:
                 bl1, bl2 = bleu1.get_metric(), bleu2.get_metric()
                 print('Batch {} Bleu1 {:.4f} Bleu2 {:.4f} in {:.4f} secs per batch'.format(
-                    i, bl1, bl2, (time.time() - start_)/params.verbose))
+                    i, bl1, bl2, (time.time() - start_)/(i+1)))
                 if params.wandb:
                     wandb.log({'Bleu1':bl1, 'Bleu2':bl2})
 
