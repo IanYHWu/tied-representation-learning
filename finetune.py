@@ -226,7 +226,10 @@ def main(params):
             if not params.single_direction:
                 evaluate(y, x, x_code, bleu2)
             if i % params.verbose == 0:
-                print('Batch {} Bleu1 {:.4f} Bleu2 {:.4f}'.format(i, bleu1.get_metric(), bleu2.get_metric()))
+                bl1, bl2 = bleu1.get_metric(), bleu2.get_metric()
+                print('Batch {} Bleu1 {:.4f} Bleu2 {:.4f}'.format(i, bl1, bl2))
+                if params.wandb:
+                    wandb.log({'Bleu1':bl1, 'Bleu1':bl2})
 
         test_results[direction] = [bleu1.get_metric()]
         test_results[alt_direction] = [bleu2.get_metric()]
