@@ -244,13 +244,16 @@ def main(params):
                 print('Batch {} Bleu1 {:.4f} Bleu2 {:.4f} in {:.4f} secs per batch'.format(
                     i, bl1, bl2, (time.time() - start_)/params.verbose))
                 if params.wandb:
-                    wandb.log({'Bleu1':bl1, 'Bleu1':bl2})
+                    wandb.log({'Bleu1':bl1, 'Bleu2':bl2})
 
         test_results[direction] = [bleu1.get_metric()]
         test_results[alt_direction] = [bleu2.get_metric()]
 
     # save test_results
     pd.DataFrame(test_results).to_csv(logger.root_path + '/test_results.csv', index=False)
+
+    if params.wandb:
+        wandb.finish()
 
 
 if __name__ == '__main__':
