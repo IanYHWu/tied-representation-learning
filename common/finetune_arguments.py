@@ -66,6 +66,10 @@ parser.add_argument('--save',
     action='store_true',
     help='wether to save model after training.'
 )
+parser.add_argument('--test_batches',
+    default=None, type=int,
+    help='Batches to test on (if None will test on all).'
+)
 
 #### Decoding
 parser.add_argument('--num_beams',

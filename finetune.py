@@ -5,7 +5,8 @@ import pandas as pd
 import wandb
 from transformers import MBart50TokenizerFast, MBartForConditionalGeneration
 from datasets import load_dataset
-from itertools import combinations
+from itertools import combinations, repeat
+import time
 
 from common.preprocess import pad_sequence, filter_languages
 from common.utils import accuracy_fn, to_devices
@@ -175,9 +176,15 @@ def main(params):
     #train
     losses, accs = [], []
     for i in range(params.train_steps):
+        start_ = time.time()
 
         # sample a direction
-        x, y = next(iterators[directions[int(np.random.choice(len(num_examples), p=dir_dist))]])
+        direction = directions[int(np.random.choice(len(num_examples), p=dir_dist))]
+        try: # check iterator is not exhausted
+            x, y = next(iterators[direction])
+        except StopIteration:
+            iterators[direction] = iter(train_dataloaders[direction])
+            x, y = next(iterators[direction])
         x, y = get_direction(x, y, sample=~params.single_direction)
            
         # train on the direction
@@ -186,8 +193,9 @@ def main(params):
         accs.append(acc)
 
         if i % params.verbose == 0:
-            print('Batch {} Loss {:.4f} Acc {:.4f}'.format(
-                i, np.mean(losses[-params.verbose:]), np.mean(accs[-params.verbose:])))
+            print('Batch {} Loss {:.4f} Acc {:.4f} in {:.4f} secs per batch'.format(
+                i, np.mean(losses[-params.verbose:]), np.mean(accs[-params.verbose:]),
+                (time.time() - start_)/params.verbose))
         if params.wandb:
             wandb.log({'train_loss':loss, 'train_acc':acc})
 
@@ -202,14 +210,15 @@ def main(params):
     # evaluate the model
     def evaluate(x, y, y_code, bleu):
         y_inp, y_tar = y[:,:-1].contiguous(), y[:,1:].contiguous()
-        enc_mask, dec_mask = (x != 0), (y_inp != 0)
-        x, y_inp, y_tar, enc_mask, dec_mask = to_devices(
-          (x, y_inp, y_tar, enc_mask, dec_mask), device)
+        enc_mask = (x != 0)
+        x, y_inp, y_tar, enc_mask = to_devices(
+          (x, y_inp, y_tar, enc_mask), device)
         
         model.eval()
         y_pred = model.generate(input_ids=x, decoder_start_token_id=y_code,
             attention_mask=enc_mask, max_length=params.max_len+1,
-            num_beams=params.num_beams, length_penalty=params.length_penalty)
+            num_beams=params.num_beams, length_penalty=params.length_penalty,
+            early_stopping=True)
         bleu(y_pred[:,1:], y_tar)
 
     test_results = {}
@@ -222,12 +231,18 @@ def main(params):
         y_code = tokenizer.lang_code_to_id[LANG_CODES[direction.split('-')[-1]]]
 
         for i, (x, y) in enumerate(loader):
+            if params.test_batches is not None:
+                if i > params.test_batches:
+                    break
+            start_ = time.time()
+
             evaluate(x, y, y_code, bleu1)
             if not params.single_direction:
                 evaluate(y, x, x_code, bleu2)
             if i % params.verbose == 0:
                 bl1, bl2 = bleu1.get_metric(), bleu2.get_metric()
-                print('Batch {} Bleu1 {:.4f} Bleu2 {:.4f}'.format(i, bl1, bl2))
+                print('Batch {} Bleu1 {:.4f} Bleu2 {:.4f} in {:.4f} secs per batch'.format(
+                    i, bl1, bl2, (time.time() - start_)/params.verbose))
                 if params.wandb:
                     wandb.log({'Bleu1':bl1, 'Bleu1':bl2})
 
