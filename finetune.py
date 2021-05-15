@@ -154,7 +154,7 @@ def main(params):
                 parameter.requires_grad = unfreeze
 
     # train the model
-    _target = torch.tensor(1.0)
+    _target = torch.tensor(1.0).to(device)
     def train_step(x, y, aux=False):
 
         y_inp, y_tar = y[:,:-1].contiguous(), y[:,1:].contiguous()
