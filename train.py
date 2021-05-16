@@ -14,12 +14,13 @@ import os
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-from torchtext.data import Field, Dataset, BucketIterator
-from torchtext.datasets import TranslationDataset
 
-import transformer.Constants as Constants
 from transformer.Models import Transformer
 from transformer.Optim import ScheduledOptim
+from transformer.Translator import Translator
+
+from preprocess import load_and_preprocess
+from metrics import BLEU
 
 __author__ = "Yu-Hsiang Huang"
 
@@ -59,12 +60,10 @@ def cal_loss(pred, gold, trg_pad_idx, smoothing=False):
 
 
 def patch_src(src, pad_idx):
-    src = src.transpose(0, 1)
     return src
 
 
 def patch_trg(trg, pad_idx):
-    trg = trg.transpose(0, 1)
     trg, gold = trg[:, :-1], trg[:, 1:].contiguous().view(-1)
     return trg, gold
 
@@ -76,11 +75,12 @@ def train_epoch(model, training_data, optimizer, opt, device, smoothing):
     total_loss, n_word_total, n_word_correct = 0, 0, 0 
 
     desc = '  - (Training)   '
-    for batch in tqdm(training_data, mininterval=2, desc=desc, leave=False):
+    for i, data in enumerate(training_data):
+        src, trg = data
 
         # prepare data
-        src_seq = patch_src(batch.src, opt.src_pad_idx).to(device)
-        trg_seq, gold = map(lambda x: x.to(device), patch_trg(batch.trg, opt.trg_pad_idx))
+        src_seq = patch_src(src, opt.src_pad_idx).to(device)
+        trg_seq, gold = map(lambda x: x.to(device), patch_trg(trg, opt.trg_pad_idx))
 
         # forward
         optimizer.zero_grad()
@@ -96,6 +96,8 @@ def train_epoch(model, training_data, optimizer, opt, device, smoothing):
         n_word_total += n_word
         n_word_correct += n_correct
         total_loss += loss.item()
+        if i > 5:
+            break
 
     loss_per_word = total_loss/n_word_total
     accuracy = n_word_correct/n_word_total
@@ -110,11 +112,12 @@ def eval_epoch(model, validation_data, device, opt):
 
     desc = '  - (Validation) '
     with torch.no_grad():
-        for batch in tqdm(validation_data, mininterval=2, desc=desc, leave=False):
+        for i, data in enumerate(validation_data):
+            src, trg = data
 
             # prepare data
-            src_seq = patch_src(batch.src, opt.src_pad_idx).to(device)
-            trg_seq, gold = map(lambda x: x.to(device), patch_trg(batch.trg, opt.trg_pad_idx))
+            src_seq = patch_src(src, opt.src_pad_idx).to(device)
+            trg_seq, gold = map(lambda x: x.to(device), patch_trg(trg, opt.trg_pad_idx))
 
             # forward
             pred = model(src_seq, trg_seq)
@@ -126,19 +129,46 @@ def eval_epoch(model, validation_data, device, opt):
             n_word_correct += n_correct
             total_loss += loss.item()
 
+            if i > 5:
+                break
+
     loss_per_word = total_loss/n_word_total
     accuracy = n_word_correct/n_word_total
     return loss_per_word, accuracy
 
 
+def test_epoch(validation_data, model, opt, device, max_seq_len=200, src_pad_idx=0, trg_pad_idx=0,
+               trg_bos_idx=1, trg_eos_idx=2):
+
+    test_batches = opt.test_batches
+    beam_size = opt.beam_size
+
+    translator = Translator(model, beam_size, max_seq_len, src_pad_idx, trg_pad_idx, trg_bos_idx, trg_eos_idx)
+    bleu = BLEU()
+    bleu.set_excluded_indices([0, 2])
+
+    if test_batches:
+        with torch.no_grad():
+            for i, data in enumerate(validation_data):
+                src, trg = data
+                # prepare data
+                src_seq = patch_src(src, opt.src_pad_idx).to(device)
+                gold_targets = trg[:, 1:].to(device)
+                if i < test_batches:
+                    for sample in range(0, len(src)):
+                        prediction = translator.translate_sentence(src_seq[sample].unsqueeze(0))
+                        bleu(prediction.unsqueeze(0), gold_targets[sample].unsqueeze(0))
+                else:
+                    break
+        bleu_score = bleu.get_metric()
+    else:
+        bleu_score = 0
+
+    return bleu_score
+
+
 def train(model, training_data, validation_data, optimizer, device, opt):
     ''' Start training '''
-
-    # Use tensorboard to plot curves, e.g. perplexity, accuracy, learning rate
-    if opt.use_tb:
-        print("[Info] Use Tensorboard")
-        from torch.utils.tensorboard import SummaryWriter
-        tb_writer = SummaryWriter(log_dir=os.path.join(opt.output_dir, 'tensorboard'))
 
     log_train_file = os.path.join(opt.output_dir, 'train.log')
     log_valid_file = os.path.join(opt.output_dir, 'valid.log')
@@ -156,7 +186,6 @@ def train(model, training_data, validation_data, optimizer, device, opt):
                   header=f"({header})", ppl=ppl,
                   accu=100*accu, elapse=(time.time()-start_time)/60, lr=lr))
 
-    #valid_accus = []
     valid_losses = []
     for epoch_i in range(opt.epoch):
         print('[ Epoch', epoch_i, ']')
@@ -176,6 +205,10 @@ def train(model, training_data, validation_data, optimizer, device, opt):
 
         valid_losses += [valid_loss]
 
+        start = time.time()
+        test_bleu = test_epoch(validation_data, model, opt, device)
+        print('Autoregressive Validation: {} Bleu'.format(test_bleu))
+
         checkpoint = {'epoch': epoch_i, 'settings': opt, 'model': model.state_dict()}
 
         if opt.save_mode == 'all':
@@ -191,27 +224,15 @@ def train(model, training_data, validation_data, optimizer, device, opt):
             log_tf.write('{epoch},{loss: 8.5f},{ppl: 8.5f},{accu:3.3f}\n'.format(
                 epoch=epoch_i, loss=train_loss,
                 ppl=train_ppl, accu=100*train_accu))
-            log_vf.write('{epoch},{loss: 8.5f},{ppl: 8.5f},{accu:3.3f}\n'.format(
+            log_vf.write('{epoch},{loss: 8.5f},{ppl: 8.5f},{accu:3.3f}, {test_bleu: 8.5f}\n'.format(
                 epoch=epoch_i, loss=valid_loss,
-                ppl=valid_ppl, accu=100*valid_accu))
+                ppl=valid_ppl, accu=100*valid_accu, test_bleu=test_bleu))
 
-        if opt.use_tb:
-            tb_writer.add_scalars('ppl', {'train': train_ppl, 'val': valid_ppl}, epoch_i)
-            tb_writer.add_scalars('accuracy', {'train': train_accu*100, 'val': valid_accu*100}, epoch_i)
-            tb_writer.add_scalar('learning_rate', lr, epoch_i)
 
 def main():
-    ''' 
-    Usage:
-    python train.py -data_pkl m30k_deen_shr.pkl -log m30k_deen_shr -embs_share_weight -proj_share_weight -label_smoothing -output_dir output -b 256 -warmup 128000
-    '''
+    """ Loads the dataset and trains the model."""
 
     parser = argparse.ArgumentParser()
-
-    parser.add_argument('-data_pkl', default=None)     # all-in-1 data pickle or bpe field
-
-    parser.add_argument('-train_path', default=None)   # bpe encoded data
-    parser.add_argument('-val_path', default=None)     # bpe encoded data
 
     parser.add_argument('-epoch', type=int, default=10)
     parser.add_argument('-b', '--batch_size', type=int, default=2048)
@@ -223,9 +244,9 @@ def main():
 
     parser.add_argument('-n_head', type=int, default=8)
     parser.add_argument('-n_layers', type=int, default=6)
-    parser.add_argument('-warmup','--n_warmup_steps', type=int, default=4000)
+    parser.add_argument('-warmup', '--n_warmup_steps', type=int, default=4000)
     parser.add_argument('-lr_mul', type=float, default=2.0)
-    parser.add_argument('-seed', type=int, default=None)
+    parser.add_argument('-seed', type=int, default=1)
 
     parser.add_argument('-dropout', type=float, default=0.1)
     parser.add_argument('-embs_share_weight', action='store_true')
@@ -238,6 +259,19 @@ def main():
 
     parser.add_argument('-no_cuda', action='store_true')
     parser.add_argument('-label_smoothing', action='store_true')
+
+    parser.add_argument(
+        '-langs', nargs='+', default=['en', 'fr'],
+        type=str, help='Languages to translate'
+    )
+    parser.add_argument('-vocab_size', type=int, default=1000)
+    parser.add_argument('-data_set', type=str, default='ted_multi')
+
+    parser.add_argument('-src_pad_idx', type=int, default=0)
+    parser.add_argument('-trg_pad_idx', type=int, default=0)
+
+    parser.add_argument('-beam_size', type=int, default=5)
+    parser.add_argument('-test_batches', type=int, default=1)
 
     opt = parser.parse_args()
     opt.cuda = not opt.no_cuda
@@ -260,29 +294,22 @@ def main():
         os.makedirs(opt.output_dir)
 
     if opt.batch_size < 2048 and opt.n_warmup_steps <= 4000:
-        print('[Warning] The warmup steps may be not enough.\n'\
-              '(sz_b, warmup) = (2048, 4000) is the official setting.\n'\
-              'Using smaller batch w/o longer warmup may cause '\
+        print('[Warning] The warmup steps may be not enough.\n' \
+              '(sz_b, warmup) = (2048, 4000) is the official setting.\n' \
+              'Using smaller batch w/o longer warmup may cause ' \
               'the warmup stage ends with only little data trained.')
 
     device = torch.device('cuda' if opt.cuda else 'cpu')
 
-    #========= Loading Dataset =========#
-
-    if all((opt.train_path, opt.val_path)):
-        training_data, validation_data = prepare_dataloaders_from_bpe_files(opt, device)
-    elif opt.data_pkl:
-        training_data, validation_data = prepare_dataloaders(opt, device)
-    else:
-        raise
-
-    print(opt)
+    train_dataloader, val_dataloader, test_dataloader, _ = load_and_preprocess(
+        opt.langs, opt.batch_size, opt.vocab_size, opt.data_set, multi=False, path=opt.output_dir,
+        tokenizer=None, distributed=False)
 
     transformer = Transformer(
-        opt.src_vocab_size,
-        opt.trg_vocab_size,
-        src_pad_idx=opt.src_pad_idx,
-        trg_pad_idx=opt.trg_pad_idx,
+        opt.vocab_size,
+        opt.vocab_size,
+        src_pad_idx=0,
+        trg_pad_idx=0,
         trg_emb_prj_weight_sharing=opt.proj_share_weight,
         emb_src_trg_weight_sharing=opt.embs_share_weight,
         d_k=opt.d_k,
@@ -299,68 +326,7 @@ def main():
         optim.Adam(transformer.parameters(), betas=(0.9, 0.98), eps=1e-09),
         opt.lr_mul, opt.d_model, opt.n_warmup_steps)
 
-    train(transformer, training_data, validation_data, optimizer, device, opt)
-
-
-def prepare_dataloaders_from_bpe_files(opt, device):
-    batch_size = opt.batch_size
-    MIN_FREQ = 2
-    if not opt.embs_share_weight:
-        raise
-
-    data = pickle.load(open(opt.data_pkl, 'rb'))
-    MAX_LEN = data['settings'].max_len
-    field = data['vocab']
-    fields = (field, field)
-
-    def filter_examples_with_length(x):
-        return len(vars(x)['src']) <= MAX_LEN and len(vars(x)['trg']) <= MAX_LEN
-
-    train = TranslationDataset(
-        fields=fields,
-        path=opt.train_path, 
-        exts=('.src', '.trg'),
-        filter_pred=filter_examples_with_length)
-    val = TranslationDataset(
-        fields=fields,
-        path=opt.val_path, 
-        exts=('.src', '.trg'),
-        filter_pred=filter_examples_with_length)
-
-    opt.max_token_seq_len = MAX_LEN + 2
-    opt.src_pad_idx = opt.trg_pad_idx = field.vocab.stoi[Constants.PAD_WORD]
-    opt.src_vocab_size = opt.trg_vocab_size = len(field.vocab)
-
-    train_iterator = BucketIterator(train, batch_size=batch_size, device=device, train=True)
-    val_iterator = BucketIterator(val, batch_size=batch_size, device=device)
-    return train_iterator, val_iterator
-
-
-def prepare_dataloaders(opt, device):
-    batch_size = opt.batch_size
-    data = pickle.load(open(opt.data_pkl, 'rb'))
-
-    opt.max_token_seq_len = data['settings'].max_len
-    opt.src_pad_idx = data['vocab']['src'].vocab.stoi[Constants.PAD_WORD]
-    opt.trg_pad_idx = data['vocab']['trg'].vocab.stoi[Constants.PAD_WORD]
-
-    opt.src_vocab_size = len(data['vocab']['src'].vocab)
-    opt.trg_vocab_size = len(data['vocab']['trg'].vocab)
-
-    #========= Preparing Model =========#
-    if opt.embs_share_weight:
-        assert data['vocab']['src'].vocab.stoi == data['vocab']['trg'].vocab.stoi, \
-            'To sharing word embedding the src/trg word2idx table shall be the same.'
-
-    fields = {'src': data['vocab']['src'], 'trg':data['vocab']['trg']}
-
-    train = Dataset(examples=data['train'], fields=fields)
-    val = Dataset(examples=data['valid'], fields=fields)
-
-    train_iterator = BucketIterator(train, batch_size=batch_size, device=device, train=True)
-    val_iterator = BucketIterator(val, batch_size=batch_size, device=device)
-
-    return train_iterator, val_iterator
+    train(transformer, test_dataloader, val_dataloader, optimizer, device, opt)
 
 
 if __name__ == '__main__':
