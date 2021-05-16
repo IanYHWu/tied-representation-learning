@@ -147,11 +147,12 @@ def test_epoch(validation_data, model, opt, device, max_seq_len=200, src_pad_idx
             for i, data in enumerate(validation_data):
                 src, trg = data
                 # prepare data
-                src_seq = patch_src(src, opt.src_pad_idx).to(device)
+                src_seq = patch_src(src, opt.src_pad_idx)
                 gold_targets = trg[:, 1:].to(device)
                 if i < test_batches:
                     for sample in range(0, len(src)):
-                        prediction = translator.translate_sentence(src_seq[sample].unsqueeze(0))
+                        src_sentence = src_seq[sample].unsqueeze(0).to(device)
+                        prediction = translator.translate_sentence(src_sentence)
                         bleu(prediction.unsqueeze(0), gold_targets[sample].unsqueeze(0))
                 else:
                     break
@@ -321,7 +322,7 @@ def main():
         optim.Adam(transformer.parameters(), betas=(0.9, 0.98), eps=1e-09),
         opt.lr_mul, opt.d_model, opt.n_warmup_steps)
 
-    train(transformer, train_dataloader, val_dataloader, optimizer, device, opt)
+    train(transformer, test_dataloader, val_dataloader, optimizer, device, opt)
 
 
 if __name__ == '__main__':
