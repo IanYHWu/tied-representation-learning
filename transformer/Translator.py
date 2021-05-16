@@ -103,6 +103,8 @@ class Translator(nn.Module):
                 # -- check if all beams contain eos
                 if (eos_locs.sum(1) > 0).sum(0).item() == beam_size:
                     # TODO: Try different terminate conditions.
+                    scores = scores.cpu()
+                    seq_lens = seq_lens.cpu()
                     _, ans_idx = scores.div(seq_lens.float() ** alpha).max(0)
                     ans_idx = ans_idx.item()
                     break
