@@ -65,3 +65,33 @@ main:
   lr_scale: 1.0
   max_len: 1500
   dataset: ted_multi
+
+example_tiny:
+  model: example
+  vocab_size: 2000
+  batch_size: 32
+  layers: 2
+  heads: 2
+  dff: 64
+  d_model: 64
+  max_pe: 1000
+  dropout: 0.1
+  epochs: 3
+  warmup_steps: 4000
+  lr_scale: 1.0
+
+example:
+  model: example
+  vocab_size: 15000
+  batch_size: 32
+  layers: 6
+  heads: 4
+  dff: 1024
+  d_model: 256
+  max_pe: 1000
+  dropout: 0.2
+  epochs: 30
+  warmup_steps: 4000
+  lr_scale: 1.0
+
+
