@@ -11,7 +11,7 @@ class Translator(nn.Module):
 
     def __init__(
             self, model, beam_size, max_seq_len,
-            src_pad_idx, trg_pad_idx, trg_bos_idx, trg_eos_idx):
+            src_pad_idx, trg_pad_idx, trg_bos_idx, trg_eos_idx, device):
 
         super(Translator, self).__init__()
 
@@ -25,7 +25,7 @@ class Translator(nn.Module):
         self.model = model
         self.model.eval()
 
-        self.register_buffer('init_seq', torch.LongTensor([[trg_bos_idx]]))
+        self.register_buffer('init_seq', torch.LongTensor([[trg_bos_idx]]).to(device))
         self.register_buffer(
             'blank_seqs', 
             torch.full((beam_size, max_seq_len), trg_pad_idx, dtype=torch.long))

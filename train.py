@@ -138,7 +138,7 @@ def test_epoch(validation_data, model, opt, device, max_seq_len=200, src_pad_idx
     test_batches = opt.test_batches
     beam_size = opt.beam_size
 
-    translator = Translator(model, beam_size, max_seq_len, src_pad_idx, trg_pad_idx, trg_bos_idx, trg_eos_idx)
+    translator = Translator(model, beam_size, max_seq_len, src_pad_idx, trg_pad_idx, trg_bos_idx, trg_eos_idx, device)
     bleu = BLEU()
     bleu.set_excluded_indices([0, 2])
 
