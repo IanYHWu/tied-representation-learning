@@ -96,8 +96,6 @@ def train_epoch(model, training_data, optimizer, opt, device, smoothing):
         n_word_total += n_word
         n_word_correct += n_correct
         total_loss += loss.item()
-        if i > 5:
-            break
 
     loss_per_word = total_loss/n_word_total
     accuracy = n_word_correct/n_word_total
@@ -128,9 +126,6 @@ def eval_epoch(model, validation_data, device, opt):
             n_word_total += n_word
             n_word_correct += n_correct
             total_loss += loss.item()
-
-            if i > 5:
-                break
 
     loss_per_word = total_loss/n_word_total
     accuracy = n_word_correct/n_word_total
@@ -178,7 +173,7 @@ def train(model, training_data, validation_data, optimizer, device, opt):
 
     with open(log_train_file, 'w') as log_tf, open(log_valid_file, 'w') as log_vf:
         log_tf.write('epoch,loss,ppl,accuracy\n')
-        log_vf.write('epoch,loss,ppl,accuracy\n')
+        log_vf.write('epoch,loss,ppl,accuracy,test_bleu\n')
 
     def print_performances(header, ppl, accu, start_time, lr):
         print('  - {header:12} ppl: {ppl: 8.5f}, accuracy: {accu:3.3f} %, lr: {lr:8.5f}, '\
@@ -326,7 +321,7 @@ def main():
         optim.Adam(transformer.parameters(), betas=(0.9, 0.98), eps=1e-09),
         opt.lr_mul, opt.d_model, opt.n_warmup_steps)
 
-    train(transformer, test_dataloader, val_dataloader, optimizer, device, opt)
+    train(transformer, train_dataloader, val_dataloader, optimizer, device, opt)
 
 
 if __name__ == '__main__':
