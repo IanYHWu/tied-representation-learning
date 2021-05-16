@@ -21,11 +21,11 @@ class Translator(nn.Module):
         self.src_pad_idx = src_pad_idx
         self.trg_bos_idx = trg_bos_idx
         self.trg_eos_idx = trg_eos_idx
-
+        self.device = device
         self.model = model
         self.model.eval()
 
-        self.register_buffer('init_seq', torch.LongTensor([[trg_bos_idx]]).to(device))
+        self.register_buffer('init_seq', torch.LongTensor([[trg_bos_idx]]).to(self.device))
         self.register_buffer(
             'blank_seqs', 
             torch.full((beam_size, max_seq_len), trg_pad_idx, dtype=torch.long))
@@ -92,7 +92,7 @@ class Translator(nn.Module):
 
             ans_idx = 0   # default
             for step in range(2, max_seq_len):    # decode up to max length
-                dec_output = self._model_decode(gen_seq[:, :step], enc_output, src_mask)
+                dec_output = self._model_decode(gen_seq[:, :step].to(self.device), enc_output, src_mask)
                 gen_seq, scores = self._get_the_best_score_and_idx(gen_seq, dec_output, scores, step)
 
                 # Check if all path finished
