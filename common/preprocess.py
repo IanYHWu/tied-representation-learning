@@ -232,7 +232,7 @@ def load_and_preprocess(langs, batch_size, vocab_size, dataset_name,
 
     test_dataloader, _ = preprocess(test_dataset, langs, batch_size=batch_size, tokenizer=tokenizer, max_len=max_len,
         multi=multi, distributed=False)
-    
+
     # save tokenizers if trained
     if (path is not None) and save_tokenizer:
         if isinstance(tokenizer, list):
