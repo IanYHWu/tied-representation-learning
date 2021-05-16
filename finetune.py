@@ -105,13 +105,13 @@ def main(params):
         cols = ['input_ids_' + l for l in langs]
 
         def tokenize_fn(example):
-          """apply tokenization"""
-          l_tok = []
-          for lang in langs:
-              encoded = tokenizer.encode(example[lang])
-              encoded[0] = tokenizer.lang_code_to_id[LANG_CODES[lang]]
-              l_tok.append(encoded)
-          return {'input_ids_' + l: tok for l, tok in zip(langs, l_tok)}
+            """apply tokenization"""
+            l_tok = []
+            for lang in langs:
+                encoded = tokenizer.encode(example[lang])
+                encoded[0] = tokenizer.lang_code_to_id[LANG_CODES[lang]]
+                l_tok.append(encoded)
+            return {'input_ids_' + l: tok for l, tok in zip(langs, l_tok)}
 
         def pad_seqs(examples):
             """Apply padding"""
@@ -170,8 +170,6 @@ def main(params):
                    decoder_attention_mask=dec_mask)
         optimizer.zero_grad()
         output.loss.backward(retain_graph=aux)
-        optimizer.step()
-        scheduler.step()
 
         if aux: freeze_layers(params.frozen_layers)
         x_enc = output.encoder_last_hidden_state
@@ -181,6 +179,9 @@ def main(params):
         aux_loss = F.cosine_embedding_loss(x_enc, y_enc, _target)
         scaled_aux_loss = params.aux_strength * aux_loss
         if aux: scaled_aux_loss.backward()
+
+        optimizer.step()
+        scheduler.step()
 
         accuracy = accuracy_fn(output.logits, y_tar)
 
