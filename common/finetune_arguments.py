@@ -59,7 +59,7 @@ parser.add_argument('--auxiliary',
     help='Whether to use auxiliary loss.'
 )
 parser.add_argument('--frozen_layers',
-    default=[], nargs='+',
+    default=[], nargs='+', type=int,
     help='Indicies of frozen layers.'
 )
 parser.add_argument('--aux_strength',
