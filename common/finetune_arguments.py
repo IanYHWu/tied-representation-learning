@@ -12,6 +12,10 @@ parser.add_argument('--location',
     default='..', type=str,
     help='File path for saving results.'
 )
+parser.add_argument('--val',
+    action='store_true',
+    help='Use validation set rather than test set.'
+)
 
 #### Languages + preprocessing
 parser.add_argument('--langs',
@@ -19,7 +23,7 @@ parser.add_argument('--langs',
     help='Ted language codes for languages to train on.'
 )
 parser.add_argument('--temp',
-    default=1.0, type=float,
+    default=0.7, type=float,
     help='Sampling temperature for relative language sizes.'
 )
 parser.add_argument('--max_len',
@@ -30,14 +34,19 @@ parser.add_argument('--single_direction',
     action='store_true',
     help='Whether to only train on one way (for bilingual mode).'
 )
+parser.add_argument('--zero_shot',
+    default=[], nargs='+',
+    help='Directions to zero shot translate as a list of pairs \
+    (both directions are excluded from training).'
+)
 
 #### Optimization
 parser.add_argument('--batch_size',
-    default=6, type=int,
+    default=5, type=int,
     help='Dataloader batch size.'
 ) 
 parser.add_argument('--train_steps',
-    default=5000, type=int,
+    default=20000, type=int,
     help='Total number of training steps.'
 )
 parser.add_argument('--max_lr',
@@ -63,13 +72,13 @@ parser.add_argument('--frozen_layers',
     help='Indicies of frozen layers.'
 )
 parser.add_argument('--aux_strength',
-    default=1e-3, type=float,
+    default=1.0, type=float,
     help='Relative strength of aux regularisation.'
 )
 
 #### Verbosity
 parser.add_argument('--verbose',
-    default=20, type=int,
+    default=100, type=int,
     help='Frequency to print during training.'
 )
 parser.add_argument('--wandb',

@@ -132,8 +132,7 @@ def main(params):
     # load data
     dataset = load_dataset('ted_multi')
     train_dataset = dataset['train']
-    #val_dataset = dataset['validation']
-    test_dataset = dataset['test']
+    test_dataset = dataset['validation' if params.val else 'test']
 
     # preprocess splits for each direction
     num_train_examples = {}
@@ -141,7 +140,6 @@ def main(params):
     for l1, l2 in combinations(params.langs, 2):
         train_dataloaders[l1+'-'+l2], num_train_examples[l1+'-'+l2] = pipeline(
             train_dataset, [l1, l2], params.batch_size, params.max_len)
-        #val_dataloaders[l1+'-'+l2], _ = pipeline(val_dataset, [l1, l2], params.batch_size, params.max_len)
         test_dataloaders[l1+'-'+l2], _ = pipeline(test_dataset, [l1, l2], params.batch_size, params.max_len)
 
     # print dataset sizes
@@ -189,7 +187,13 @@ def main(params):
 
     # prepare iterators
     iterators = {direction: iter(loader) for direction, loader in train_dataloaders.items()}
-    directions, num_examples = list(num_train_examples.keys()), np.array(list(num_train_examples.values()))
+
+    # compute sampling probabilites (and set zero shot directions to 0)
+    num_examples = num_train_examples.copy()
+    zero_shots = [(params.zero_shot[i]+'-'+params.zero_shot[i+1]) for i in range(0, len(params.zero_shot), 2)]
+    for d in zero_shots:
+        num_examples[d] = 0
+    directions, num_examples = list(num_examples.keys()), np.array(list(num_examples.values()))
     dir_dist = (num_examples ** params.temp) / ((num_examples ** params.temp).sum())
 
     #train
