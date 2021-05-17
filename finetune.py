@@ -170,12 +170,16 @@ def main(params):
         output.loss.backward(retain_graph=aux)
 
         if aux: freeze_layers(params.frozen_layers)
+        torch.set_grad_enabled(aux)
+
         x_enc = output.encoder_last_hidden_state
         y_enc = model.model.encoder(y_inp, attention_mask=dec_mask)['last_hidden_state']
         x_enc = torch.max(x_enc + -999 * (1-enc_mask.type(x_enc.dtype)).unsqueeze(-1), dim=1)[0]
         y_enc = torch.max(y_enc + -999 * (1-dec_mask.type(y_enc.dtype)).unsqueeze(-1), dim=1)[0]
         aux_loss = F.cosine_embedding_loss(x_enc, y_enc, _target)
         scaled_aux_loss = params.aux_strength * aux_loss
+        
+        torch.set_grad_enabled(~aux)
         if aux: scaled_aux_loss.backward()
 
         optimizer.step()
