@@ -179,7 +179,7 @@ def main(params):
         aux_loss = F.cosine_embedding_loss(x_enc, y_enc, _target)
         scaled_aux_loss = params.aux_strength * aux_loss
         
-        torch.set_grad_enabled(~aux)
+        torch.set_grad_enabled(not aux)
         if aux: scaled_aux_loss.backward()
 
         optimizer.step()
@@ -212,7 +212,7 @@ def main(params):
         except StopIteration:
             iterators[direction] = iter(train_dataloaders[direction])
             x, y = next(iterators[direction])
-        x, y = get_direction(x, y, sample=~params.single_direction)
+        x, y = get_direction(x, y, sample=not params.single_direction)
            
         # train on the direction
         loss, aux_loss, acc = train_step(x, y, aux=params.auxiliary)
