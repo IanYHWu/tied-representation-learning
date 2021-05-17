@@ -179,7 +179,7 @@ def main(params):
         aux_loss = F.cosine_embedding_loss(x_enc, y_enc, _target)
         scaled_aux_loss = params.aux_strength * aux_loss
         
-        torch.set_grad_enabled(not aux)
+        torch.set_grad_enabled(True)
         if aux: scaled_aux_loss.backward()
 
         optimizer.step()
