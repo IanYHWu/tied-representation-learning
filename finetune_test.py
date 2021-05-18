@@ -76,7 +76,7 @@ def main(params):
         
         model.eval()
         y_pred = model.generate(input_ids=x, decoder_start_token_id=y_code,
-            attention_mask=enc_mask, max_length=params.max_len+1,
+            attention_mask=enc_mask, max_length=x.size(1)+1,
             num_beams=params.num_beams, length_penalty=params.length_penalty,
             early_stopping=True)
         bleu(y_pred[:,1:], y_tar)
@@ -104,8 +104,10 @@ def main(params):
                 print('Batch {} Bleu1 {:.4f} Bleu2 {:.4f} in {:.4f} secs per batch'.format(
                     i, bl1, bl2, (time.time() - start_)/(i+1)))
 
-        test_results[direction] = [bleu1.get_metric()]
-        test_results[alt_direction] = [bleu2.get_metric()]
+        bl1, bl2 = bleu1.get_metric(), bleu2.get_metric()
+        test_results[direction] = [bl1]
+        test_results[alt_direction] = [bl2]
+        print(direction, bl1, bl2)
 
     # save test_results
     pd.DataFrame(test_results).to_csv(params.location+'/'+params.name+'/test_results.csv', index=False)
