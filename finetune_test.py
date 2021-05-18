@@ -25,7 +25,8 @@ def main(params):
     tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50")
     config = MBartConfig.from_pretrained("facebook/mbart-large-50")
     model = MBartForConditionalGeneration(config).to(device)
-    model, _, _, _ = logging.load_checkpoint(params.location+'/checkpoint/checkpoint', device, model)
+    checkpoint_location = params.location+'/'+params.name+'/checkpoint/checkpoint'
+    model, _, _, _ = logging.load_checkpoint(checkpoint_location, device, model)
 
 
     def pipeline(dataset, langs, batch_size, max_len):
@@ -107,7 +108,7 @@ def main(params):
         test_results[alt_direction] = [bleu2.get_metric()]
 
     # save test_results
-    pd.DataFrame(test_results).to_csv(params.location + '/test_results.csv', index=False)
+    pd.DataFrame(test_results).to_csv(params.location+'/'+params.name+'/test_results.csv', index=False)
 
 
 if __name__ == '__main__':
