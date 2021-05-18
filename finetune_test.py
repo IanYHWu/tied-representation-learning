@@ -25,7 +25,7 @@ def main(params):
     tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50")
     config = MBartConfig.from_pretrained("facebook/mbart-large-50")
     model = MBartForConditionalGeneration(config).to(device)
-    checkpoint_location = params.location+'/'+params.name+'/checkpoint'
+    checkpoint_location = params.location+'/'+params.name+'/checkpoint/checkpoint'
     model, _, _, _ = logging.load_checkpoint(checkpoint_location, device, model)
 
 
