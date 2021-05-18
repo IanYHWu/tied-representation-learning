@@ -46,7 +46,7 @@ parser.add_argument('--batch_size',
     help='Dataloader batch size.'
 ) 
 parser.add_argument('--train_steps',
-    default=20000, type=int,
+    default=40000, type=int,
     help='Total number of training steps.'
 )
 parser.add_argument('--max_lr',
