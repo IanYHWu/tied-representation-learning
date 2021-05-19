@@ -9,9 +9,10 @@ from common.utils import to_devices, accuracy_fn, loss_fn, auxiliary_loss_fn
 class LabelSmoothingLoss(nn.Module):
     """ Applies label smoothing to a cross entropy loss. """
 
-    def __init__(self, smoothing):
+    def __init__(self, smoothing, masked=True):
         super(LabelSmoothingLoss, self).__init__()
         self.s = smoothing
+        self.masked = masked
 
     def forward(self, y_pred, y_tar):
         """
@@ -21,7 +22,13 @@ class LabelSmoothingLoss(nn.Module):
         y_pred = F.log_softmax(y_pred, dim=-1)
         nll = -y_pred.gather(dim=-1, index=y_tar.unsqueeze(1)).squeeze(1) * (1.0 - self.s)
         y_pred_smoothed = -y_pred.mean(dim=-1) * self.s
-        return (nll + y_pred_smoothed).mean()
+        loss = nll + y_pred_smoothed
+
+        if self.masked:
+            mask = (y_tar != 0).type(loss.dtype)
+            return (loss * mask).sum() / mask.sum()
+        else:
+            return loss.mean()
 
 
 def train_step(x, y, model, criterion, aux_criterion, optimizer, scheduler, device, distributed=False):
