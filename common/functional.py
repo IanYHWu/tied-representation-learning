@@ -6,6 +6,24 @@ from models import base_transformer
 from common.utils import to_devices, accuracy_fn, loss_fn, auxiliary_loss_fn
 
 
+class LabelSmoothingLoss(nn.Module):
+    """ Applies label smoothing to a cross entropy loss. """
+
+    def __init__(self, smoothing):
+        super(LabelSmoothingLoss, self).__init__()
+        self.s = smoothing
+
+    def forward(self, y_pred, y_tar):
+        """
+        y_pred : (..., vocab_size)
+        y_tar (...,)
+        """
+        y_pred = F.log_softmax(y_pred, dim=-1)
+        nll = -y_pred.gather(dim=-1, index=y_tar.unsqueeze(1)).squeeze(1) * (1.0 - self.s)
+        y_pred_smoothed = -y_pred.mean(dim=-1) * self.s
+        return (nll + y_pred_smoothed).mean()
+
+
 def train_step(x, y, model, criterion, aux_criterion, optimizer, scheduler, device, distributed=False):
     # get masks and targets
     y_inp, y_tar = y[:, :-1], y[:, 1:]

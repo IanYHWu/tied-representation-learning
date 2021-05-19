@@ -61,6 +61,10 @@ parser.add_argument('--dropout',
     default=0.3, type=float,
     help='Dropout and attention dropout rates.'
 )
+parser.add_argument('--label_smoothing',
+    default=None, type=float,
+    help='Amount of label smoothing to apply.'
+)
 
 #### Auxiliary
 parser.add_argument('--auxiliary',
@@ -100,6 +104,6 @@ parser.add_argument('--num_beams',
     help='Number of beams for decoding.'
 )
 parser.add_argument('--length_penalty',
-    default=0.6, type=float,
+    default=1.0, type=float,
     help='Length penalty for decoding.'
 )

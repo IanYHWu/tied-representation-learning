@@ -151,6 +151,13 @@ def main(params):
             for parameter in model.model.encoder.layers[n].parameters():
                 parameter.requires_grad = unfreeze
 
+    # define loss function
+    if params.label_smoothing is not None:
+        loss_object = LabelSmoothingLoss(params.label_smoothing)
+        loss_fn = lambda out, tar: loss_object(out.logits, tar)
+    else:
+        loss_fn = lambda out, tar: out.loss
+
     # train the model
     _target = torch.tensor(1.0).to(device)
     def train_step(x, y, aux=False):
@@ -167,7 +174,8 @@ def main(params):
                    labels=y_tar, attention_mask=enc_mask,
                    decoder_attention_mask=dec_mask)
         optimizer.zero_grad()
-        output.loss.backward(retain_graph=aux)
+        loss = loss_fn(output, y_tar)
+        loss.backward(retain_graph=aux)
 
         if aux: freeze_layers(params.frozen_layers)
         torch.set_grad_enabled(aux)
