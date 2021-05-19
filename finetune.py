@@ -12,6 +12,7 @@ import time
 from common.preprocess import pad_sequence, filter_languages
 from common.utils import accuracy_fn, to_devices
 from common.metrics import BLEU
+from common.functional import LabelSmoothingLoss
 from common import data_logger as logging
 from hyperparams.schedule import WarmupDecay
 
@@ -195,7 +196,7 @@ def main(params):
 
         accuracy = accuracy_fn(output.logits, y_tar)
 
-        return output.loss.item(), aux_loss.item(), accuracy.item()
+        return loss.item(), aux_loss.item(), accuracy.item()
 
     # prepare iterators
     iterators = {direction: iter(loader) for direction, loader in train_dataloaders.items()}
