@@ -316,10 +316,10 @@ def _detokenize(x, tokenizer, batch, as_lists=True):
         x = x.unsqueeze(0)
 
     x = x.detach().cpu().tolist()
-    if batch:
-        x = tokenizer.decode_batch(x)
-    else:
-        x = tokenizer.decode(x)
+    #if batch:
+        #x = tokenizer.decode_batch(x)
+    #else:
+    x = tokenizer.decode(x)
 
     if as_lists:
         x = [s.split() for s in x]
