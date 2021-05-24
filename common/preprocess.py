@@ -308,7 +308,7 @@ def pivot_load_and_preprocess(langs, batch_size, dataset_name, tokenizer_1, toke
     return test_dataloader_1, test_dataloader_2
 
 
-def _detokenize(x, tokenizer, as_lists=True, batch=True):
+def _detokenize(x, tokenizer, batch, as_lists=True):
     """ Detokenize a batch of given tensors."""
     batch = True
     if x.ndim == 1:
