@@ -28,6 +28,7 @@ def main(params):
     checkpoint_location = params.location+'/'+params.name+'/checkpoint/checkpoint'
     model, _, _, _ = logging.load_checkpoint(checkpoint_location, device, model)
 
+    logger = logging.TestLogger(params)
 
     def pipeline(dataset, langs, batch_size, max_len):
 
@@ -79,7 +80,8 @@ def main(params):
             attention_mask=enc_mask, max_length=x.size(1)+1,
             num_beams=params.num_beams, length_penalty=params.length_penalty,
             early_stopping=True)
-        bleu(y_pred[:,1:], y_tar)
+        bleu(y_pred[:, 1:], y_tar)
+        logger.log_examples(x, y_tar, y_pred, tokenizer)
 
     test_results = {}
     for direction, loader in test_dataloaders.items():
@@ -107,6 +109,7 @@ def main(params):
         bl1, bl2 = bleu1.get_metric(), bleu2.get_metric()
         test_results[direction] = [bl1]
         test_results[alt_direction] = [bl2]
+        logger.dump_examples()
         print(direction, bl1, bl2)
 
     # save test_results
