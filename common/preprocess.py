@@ -328,19 +328,6 @@ def _detokenize(x, tokenizer, as_lists=True):
 
 
 def detokenize(x, tokenizer, as_lists=True):
-    """
-    Detokenize a given batch of sequences of tokens (or
-    a list of batches of sequences of tokens).
-    x : int torch.tensors (or list of) - shape (batch, seq_len)
-    tokenizer : tokenizers.Tokenizer
-    as_list : bool - return as list or string
-
-    Returns:
-    if as_list is True then returns a list of the detokenized sequences
-    as a list of tokens. If as_list if Fales then the list consists of strings.
-    If a list of batches is passed then the return is a list of the detokenized
-    batches.
-    """
     if isinstance(x, list):
         if isinstance(tokenizer, list):
             assert len(x) == len(tokenizer)

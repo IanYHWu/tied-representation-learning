@@ -16,6 +16,9 @@ from common import data_logger as logging
 from hyperparams.schedule import WarmupDecay
 from finetune import LANG_CODES
 
+from common.preprocess import detokenize
+from common.utils import mask_after_stop
+
 
 def main(params):
     """ Evaluates a finetuned model on the test or validation dataset."""
@@ -28,7 +31,7 @@ def main(params):
     checkpoint_location = params.location+'/'+params.name+'/checkpoint/checkpoint'
     model, _, _, _ = logging.load_checkpoint(checkpoint_location, device, model)
 
-    logger = logging.TestLogger(params)
+    logger = ExamplesLogger(params)
 
     def pipeline(dataset, langs, batch_size, max_len):
 
@@ -114,6 +117,39 @@ def main(params):
 
     # save test_results
     pd.DataFrame(test_results).to_csv(params.location+'/'+params.name+'/test_results.csv', index=False)
+
+
+class ExamplesLogger:
+
+    def __init__(self, params):
+        self.params = params
+        self.input_examples = []
+        self.target_examples = []
+        self.pred_examples = []
+
+    def log_examples(self, input_batch, target_batch, prediction_batch, tokenizer):
+        prediction_batch = mask_after_stop(prediction_batch, stop_token=2)
+        if isinstance(tokenizer, list):
+            inp_tokenizer = tokenizer[0]
+            out_tokenizer = tokenizer[1]
+        else:
+            inp_tokenizer = tokenizer
+            out_tokenizer = tokenizer
+        det_input = str(detokenize(input_batch, inp_tokenizer)[0])
+        det_target = str(detokenize(target_batch, out_tokenizer)[0])
+        det_pred = str(detokenize(prediction_batch, out_tokenizer)[0])
+
+        self.target_examples.append(det_target)
+        self.pred_examples.append(det_pred)
+        self.input_examples.append(det_input)
+
+    def dump_examples(self):
+        with open(self.params.location+'/'+self.params.name + '_examples.txt', 'w') as f:
+            for inp, pred, target in zip(self.input_examples, self.pred_examples, self.target_examples):
+                f.write("Input: {} \n \n".format(inp))
+                f.write("Target: {} \n \n".format(target))
+                f.write("Prediction: {} \n \n".format(pred))
+                f.write("---------------------------------- \n \n")
 
 
 if __name__ == '__main__':
