@@ -330,15 +330,15 @@ def _detokenize(x, tokenizer, as_lists=True, batch=True):
         return x[0]
 
 
-def detokenize(x, tokenizer, as_lists=True):
+def detokenize(x, tokenizer, as_lists=True, batch=True):
     if isinstance(x, list):
         if isinstance(tokenizer, list):
             assert len(x) == len(tokenizer)
-            return [_detokenize(x_, tok, as_lists=as_lists) for x_, tok in zip(x, tokenizer)]
+            return [_detokenize(x_, tok, as_lists=as_lists, batch=batch) for x_, tok in zip(x, tokenizer)]
         else:
-            return [_detokenize(x_, tokenizer, as_lists=as_lists) for x_ in x]
+            return [_detokenize(x_, tokenizer, as_lists=as_lists, batch=batch) for x_ in x]
     else:
-        return _detokenize(x, tokenizer, as_lists=as_lists)
+        return _detokenize(x, tokenizer, as_lists=as_lists, batch=batch)
 
 
 def _tokenize(x, tokenizer):
