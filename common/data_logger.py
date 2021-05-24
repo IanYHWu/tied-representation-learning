@@ -108,9 +108,9 @@ class TestLogger:
         else:
             inp_tokenizer = tokenizer
             out_tokenizer = tokenizer
-        det_input = str(detokenize(input_batch, inp_tokenizer)[0])
-        det_target = str(detokenize(target_batch, out_tokenizer)[0])
-        det_pred = str(detokenize(prediction_batch, out_tokenizer)[0])
+        det_input = str(detokenize(input_batch, inp_tokenizer, batch=True)[0])
+        det_target = str(detokenize(target_batch, out_tokenizer, batch=True)[0])
+        det_pred = str(detokenize(prediction_batch, out_tokenizer, batch=True)[0])
 
         self.target_examples.append(det_target)
         self.pred_examples.append(det_pred)

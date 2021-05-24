@@ -330,7 +330,7 @@ def _detokenize(x, tokenizer, as_lists=True, batch=True):
         return x[0]
 
 
-def detokenize(x, tokenizer, as_lists=True, batch=True):
+def detokenize(x, tokenizer, batch, as_lists=True):
     if isinstance(x, list):
         if isinstance(tokenizer, list):
             assert len(x) == len(tokenizer)
