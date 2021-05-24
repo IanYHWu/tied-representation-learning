@@ -308,7 +308,7 @@ def pivot_load_and_preprocess(langs, batch_size, dataset_name, tokenizer_1, toke
     return test_dataloader_1, test_dataloader_2
 
 
-def _detokenize(x, tokenizer, batch, as_lists=True):
+def _detokenize(x, tokenizer, as_lists=True):
     """ Detokenize a batch of given tensors."""
     batch = True
     if x.ndim == 1:
@@ -316,10 +316,7 @@ def _detokenize(x, tokenizer, batch, as_lists=True):
         x = x.unsqueeze(0)
 
     x = x.detach().cpu().tolist()
-    #if batch:
-        #x = tokenizer.decode_batch(x)
-    #else:
-    x = tokenizer.decode(x)
+    x = tokenizer.decode_batch(x)
 
     if as_lists:
         x = [s.split() for s in x]
@@ -330,15 +327,15 @@ def _detokenize(x, tokenizer, batch, as_lists=True):
         return x[0]
 
 
-def detokenize(x, tokenizer, batch, as_lists=True):
+def detokenize(x, tokenizer, as_lists=True):
     if isinstance(x, list):
         if isinstance(tokenizer, list):
             assert len(x) == len(tokenizer)
-            return [_detokenize(x_, tok, as_lists=as_lists, batch=batch) for x_, tok in zip(x, tokenizer)]
+            return [_detokenize(x_, tok, as_lists=as_lists) for x_, tok in zip(x, tokenizer)]
         else:
-            return [_detokenize(x_, tokenizer, as_lists=as_lists, batch=batch) for x_ in x]
+            return [_detokenize(x_, tokenizer, as_lists=as_lists) for x_ in x]
     else:
-        return _detokenize(x, tokenizer, as_lists=as_lists, batch=batch)
+        return _detokenize(x, tokenizer, as_lists=as_lists)
 
 
 def _tokenize(x, tokenizer):
