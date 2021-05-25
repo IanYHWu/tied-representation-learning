@@ -116,7 +116,7 @@ def main(params):
         print(direction, bl1)
 
     # save test_results
-    pd.DataFrame(test_results).to_csv(params.location + '/' + params.name + '/test_results.csv', index=False)
+    pd.DataFrame(test_results).to_csv(params.location + '/test_results.csv', index=False)
 
 
 if __name__ == '__main__':
