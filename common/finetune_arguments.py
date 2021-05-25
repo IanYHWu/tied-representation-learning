@@ -12,6 +12,10 @@ parser.add_argument('--location',
     default='..', type=str,
     help='File path for saving results.'
 )
+parser.add_argument('--location_2',
+    default='..', type=str,
+    help='Checkpoint location for second pivot model.'
+)
 parser.add_argument('--val',
     action='store_true',
     help='Use validation set rather than test set.'
