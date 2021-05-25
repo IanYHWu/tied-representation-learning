@@ -86,7 +86,6 @@ def main(params):
                                     num_beams=params.num_beams, length_penalty=params.length_penalty,
                                     early_stopping=True)
         pivot_pred = mask_after_stop(pivot_pred, 2)
-        print(pivot_pred)
         pivot_mask = (pivot_pred != 0)
         y_pred = model_2.generate(input_ids=pivot_pred, decoder_start_token_id=y_code,
                                   attention_mask=pivot_mask, max_length=x.size(1) + 1,
