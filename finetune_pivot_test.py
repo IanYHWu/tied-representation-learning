@@ -29,8 +29,8 @@ def main(params):
     config = MBartConfig.from_pretrained("facebook/mbart-large-50")
     model = MBartForConditionalGeneration(config).to(device)
     model_2 = MBartForConditionalGeneration(config).to(device)
-    checkpoint_location = params.location + '/' + params.name + '/checkpoint/checkpoint'
-    checkpoint_location_2 = params.location_2 + '/' + params.name + '/checkpoint/checkpoint'
+    checkpoint_location = params.location
+    checkpoint_location_2 = params.location_2
     model, _, _, _ = logging.load_checkpoint(checkpoint_location, device, model)
     model_2, _, _, _ = logging.load_checkpoint(checkpoint_location_2, device, model_2)
 
