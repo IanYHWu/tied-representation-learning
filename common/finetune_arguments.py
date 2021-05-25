@@ -12,7 +12,11 @@ parser.add_argument('--location',
     default='..', type=str,
     help='File path for saving results.'
 )
-parser.add_argument('--location_2',
+parser.add_argument('--checkpoint_location',
+    default='..', type=str,
+    help='Checkpoint location for first pivot model.'
+)
+parser.add_argument('--checkpoint_location_2',
     default='..', type=str,
     help='Checkpoint location for second pivot model.'
 )
