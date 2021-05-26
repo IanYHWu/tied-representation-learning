@@ -6,7 +6,6 @@ import pandas as pd
 import wandb
 from transformers import MBart50TokenizerFast, MBartForConditionalGeneration, MBartConfig
 from datasets import load_dataset
-from datasets import concatenate_datasets
 from itertools import combinations
 import time
 
@@ -62,13 +61,14 @@ def main(params):
         return dataloader, num_examples
 
     # load data
-    dataset = load_dataset('ted_multi')
-    val_dataset = dataset['validation']
-    testing_dataset = dataset['test']
-    if params.val:
-        test_dataset = val_dataset
+    if params.split == 'val':
+        test_dataset = load_dataset('ted_multi', split='validation')
+    elif params.split == 'test':
+        test_dataset = load_dataset('ted_multi', split='test')
+    elif params.split == 'combine':
+        test_dataset = load_dataset('ted_multi', split='validation+test')
     else:
-        test_dataset = concatenate_datasets([val_dataset, testing_dataset])
+        raise NotImplementedError
 
     # preprocess splits for each direction
     test_dataloaders = {}
