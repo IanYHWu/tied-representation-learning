@@ -133,7 +133,7 @@ def main(params):
     # load data
     dataset = load_dataset('ted_multi')
     train_dataset = dataset['train']
-    test_dataset = dataset['validation' if params.val else 'test']
+    test_dataset = dataset['validation' if params.split == 'val' else 'test']
 
     # preprocess splits for each direction
     num_train_examples = {}
