@@ -20,9 +20,10 @@ parser.add_argument('--checkpoint_location_2',
     default='..', type=str,
     help='Checkpoint location for second pivot model.'
 )
-parser.add_argument('--val',
-    action='store_true',
-    help='Use validation set rather than test set.'
+parser.add_argument('--split',
+    default='test', type=str,
+    help='Which dataset split to use: test for test, val for val,\
+    combine for both.'
 )
 
 #### Languages + preprocessing
