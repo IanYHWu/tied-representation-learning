@@ -29,7 +29,7 @@ def main(params):
 
     # finetune
     trainer = pl.Trainer(gpus=-1, max_steps=params.train_steps,
-        logger=pl_logger, deterministic=True)
+        logger=pl_logger, deterministic=True, accelerator='ddp')
     trainer.fit(model, datamodule)
 
     # save model
