@@ -25,6 +25,10 @@ parser.add_argument('--split',
     help='Which dataset split to use: test for test, val for val,\
     combine for both.'
 )
+parser.add_argument('--seed',
+    default=11, type=int,
+    help='Random seed for run.'
+)
 
 #### Languages + preprocessing
 parser.add_argument('--langs',
@@ -85,7 +89,7 @@ parser.add_argument('--frozen_layers',
     help='Indicies of frozen layers.'
 )
 parser.add_argument('--aux_strength',
-    default=1.0, type=float,
+    default=0.0, type=float,
     help='Relative strength of aux regularisation.'
 )
 

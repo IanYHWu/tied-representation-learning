@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import pytorch_lightning as pl
 from datasets import load_dataset
 from itertools import combinations
@@ -77,21 +78,16 @@ class TedMulti:
             """apply tokenization"""
             l_tok = []
             for lang in self.langs:
-                encoded = tokenizer.encode(example[lang], padding='max_length',
+                encoded = self.tokenizer.encode(example[lang], padding='max_length',
                     max_length=self.max_len, truncation=True)
-                encoded[0] = tokenizer.lang_code_to_id[LANG_CODES[lang]]
+                encoded[0] = self.tokenizer.lang_code_to_id[LANG_CODES[lang]]
                 l_tok.append(encoded)
             return {'input_ids_' + l: tok for l, tok in zip(self.langs, l_tok)}
 
         dataset = dataset.map(tokenize_fn)
-        dataset.set_format(type='torch', columns=cols)
+        dataset.set_format(type='torch', columns=self.cols)
 
-        print('-'.join(langs) + ' : {} examples.'.format(len(dataset)))
-        dataloader = torch.utils.data.DataLoader(dataset,
-                                                batch_size=self.batch_size,
-                                                shuffle=shuffle)
-        
-        return dataloader, num_examples
+        return dataset, len(dataset)
 
 
 class WMT:
@@ -113,25 +109,16 @@ class WMT:
             example = example['translation']
             l_tok = []
             for lang in self.langs:
-                encoded = tokenizer.encode(example[lang], padding='max_length',
+                encoded = self.tokenizer.encode(example[lang], padding='max_length',
                     max_length=self.max_len, truncation=True)
-                encoded[0] = tokenizer.lang_code_to_id[LANG_CODES[lang]]
+                encoded[0] = self.tokenizer.lang_code_to_id[LANG_CODES[lang]]
                 l_tok.append(encoded)
             return {'input_ids_' + l: tok for l, tok in zip(self.langs, l_tok)}
 
         dataset = dataset.map(tokenize_fn)
-        dataset.set_format(type='torch', columns=cols)
+        dataset.set_format(type='torch', columns=self.cols)
 
-        def collate_fn(example):
-            return (example[col] for col in cols)
-
-        print('-'.join(langs) + ' : {} examples.'.format(len(dataset)))
-        dataloader = torch.utils.data.DataLoader(dataset,
-                                                batch_size=self.batch_size,
-                                                collate_fn=collate_fn
-                                                shuffle=shuffle)
-        
-        return dataloader, num_examples
+        return dataset, len(dataset)
 
 
 """ Data loading classes """
@@ -141,11 +128,12 @@ class IterableDataset(torch.utils.data.IterableDataset):
     def __init__(self, datasets, langs, T=1.0, bilingual=False):
         self.datasets = datasets
         self.langs = langs
-        self.lengths = {k:len(d) for k,d in datasets.items()}
-        self.prob_dist = (np.array(lengths) ** T) / (np.array(lengths) ** T).sum()
         self.bilingual = bilingual
 
-        if not self.bilingual: self.lang_pairs = list(combinations(self.langs, 2))
+        if not self.bilingual:
+            self.lang_pairs = list(combinations(self.langs, 2))
+            lengths = np.array([len(datasets[l1+'-'+l2]) for l1, l2 in self.lang_pairs])
+            self.prob_dist = (lengths ** T) / (lengths ** T).sum()
 
     def __iter__(self):
         self.iterators = {k:iter(d) for k,d in self.datasets.items()}
@@ -197,7 +185,7 @@ class MNMTDataModule(pl.LightningDataModule):
                 raise NotImplementedError
         tokenizer = MBart50TokenizerFast.from_pretrained('facebook/mbart-large-50')
 
-    def setup(self, stage: Optional[str] = None):
+    def setup(self, stage = None):
         self.tokenizer = MBart50TokenizerFast.from_pretrained('facebook/mbart-large-50')
         self.splits = {'train':{}, 'validation':{}, 'test':{}}
         self.train_examples = []
@@ -206,9 +194,9 @@ class MNMTDataModule(pl.LightningDataModule):
             lang_pair = l1 + '-' + l2 
             
             if BITEXT_DATASETS[lang_pair] == 'ted_multi':
-                dataset = TedMulti([l1, l2], batch_size, self.max_len, self.tokenizer)
+                dataset = TedMulti([l1, l2], self.batch_size, self.max_len, self.tokenizer)
             elif BITEXT_DATASETS[lang_pair] == 'wmt14':
-                dataset = WMT([l1, l2], batch_size, self.max_len, self.tokenizer, name='wmt14')
+                dataset = WMT([l1, l2], self.batch_size, self.max_len, self.tokenizer, name='wmt14')
             else:
                 raise NotImplementedError
             
@@ -216,7 +204,7 @@ class MNMTDataModule(pl.LightningDataModule):
                 shuffle = False if split == 'test' else True
                 dataset_split, num_examples = dataset.load_split(split, shuffle=shuffle)
                 self.splits[split][lang_pair] = dataset_split
-                if split='train': self.train_examples.append(num_examples)
+                if split=='train': self.train_examples.append(num_examples)
 
     def train_dataloader(self):
         bidirectional = True if len(self.langs) > 2 else False
