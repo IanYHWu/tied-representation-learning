@@ -204,13 +204,15 @@ class MNMTDataModule(pl.LightningDataModule):
         self.splits = {'train':{}, 'validation':{}, 'test':{}}
         self.train_examples = []
         
-        for l1, l2 in combinations(sorted(self.langs), 2):
+        for l1, l2 in combinations(self.langs, 2):
             lang_pair = l1 + '-' + l2 
+            lang_sorted = sorted([l1,l2])[0]+'-'+sorted([l1,l2])[1]
             
-            if BITEXT_DATASETS[lang_pair] == 'ted_multi':
+            if BITEXT_DATASETS[lang_sorted] == 'ted_multi':
                 dataset = TedMulti([l1, l2], self.batch_size, self.max_len, self.tokenizer)
-            elif BITEXT_DATASETS[lang_pair] == 'wmt14':
-                dataset = WMT([l1, l2], self.batch_size, self.max_len, self.tokenizer, name='wmt14')
+            elif BITEXT_DATASETS[lang_sorted][:3] == 'wmt':
+                dataset = WMT([l1, l2], self.batch_size, self.max_len,
+                    self.tokenizer, name=BITEXT_DATASETS[lang_sorted])
             else:
                 raise NotImplementedError
             
