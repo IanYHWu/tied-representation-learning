@@ -55,6 +55,8 @@ BITEXT_DATASETS = { # dataset used for each language pair
     'az-en' : 'ted_multi',
     'az-tr' : 'ted_multi',
     'cs-en' : 'wmt14',
+    'en-fr' : 'wmt14',
+    'de-en' : 'wmt19',
 }
 
 

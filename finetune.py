@@ -9,6 +9,7 @@ from transformers import MBartForConditionalGeneration
 import time
 
 from common.utils import accuracy_fn, to_devices
+from common.data import MNMTDataModule
 from common import data_logger as logging
 from hyperparams.schedule import WarmupDecay
 
@@ -31,7 +32,7 @@ def main(params):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     datamodule = MNMTDataModule(params.langs, params.batch_size, params.max_len, T=params.temp)
     datamodule.prepare_data()
-    datmodule.setup(stage='fit')
+    datamodule.setup(stage='fit')
 
     # model and optimizer
     model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50").to(device)
@@ -85,7 +86,7 @@ def main(params):
 
     losses, aux_losses, accs = [], [], []
     start_ = time.time()
-    for i, (x, y) in enumerate(datamodule.train_dataloader):
+    for i, (x, y) in enumerate(datamodule.train_dataloader()):
         if i >= params.train_steps:
             break
        
