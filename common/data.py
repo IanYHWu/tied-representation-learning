@@ -89,6 +89,9 @@ class TedMulti:
         dataset = dataset.map(tokenize_fn)
         dataset.set_format(type='torch', columns=self.cols)
 
+        dataloader = torch.utils.data.DataLoader(dataset,
+            batch_size=5)
+
         return dataset, len(dataset)
 
 
@@ -106,21 +109,27 @@ class WMT:
     def load_split(self, split, shuffle=False):
         dataset = self.dataset[split]
 
-        def tokenize_fn(example):
+        def tokenize_fn(examples):
             """apply tokenization"""
-            example = example['translation']
             l_tok = []
             for lang in self.langs:
-                encoded = self.tokenizer.encode(example[lang], padding='max_length',
-                    max_length=self.max_len, truncation=True)
-                encoded[0] = self.tokenizer.lang_code_to_id[LANG_CODES[lang]]
+                encoded = self.tokenizer.batch_encode_plus(example[lang], padding='max_length',
+                    max_length=self.max_len, truncation=True, return_tensors='pt')['input_ids']
+                for seq in encoded:
+                    seq[0] = self.tokenizer.lang_code_to_id[LANG_CODES[lang]]
                 l_tok.append(encoded)
             return {'input_ids_' + l: tok for l, tok in zip(self.langs, l_tok)}
 
-        dataset = dataset.map(tokenize_fn)
-        dataset.set_format(type='torch', columns=self.cols)
+        def collate_fn(examples):
+            lang_keys = examples[0]['translation'].keys()
+            examples = {l : [ex['translation'][l] for ex in examples] for l in lang_keys}
+            return tokenize_fn(examples)
 
-        return dataset, len(dataset)
+        dataloader = torch.utils.data.DataLoader(dataset,
+            collate_fn=collate_fn,
+            batch_size=self.batch_size)
+
+        return dataloader, len(dataset)
 
 
 """ Data loading classes """
@@ -211,5 +220,5 @@ class MNMTDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         iterable = MNMTDataset(self.splits['train'], self.langs, T=self.T, bilingual=len(self.langs)==2)
-        return torch.utils.data.DataLoader(iterable, batch_size=self.batch_size)
+        return torch.utils.data.DataLoader(iterable)
 
