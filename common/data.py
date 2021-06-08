@@ -122,7 +122,7 @@ class WMT:
 
 
 """ Data loading classes """
-class IterableDataset(torch.utils.data.IterableDataset):
+class MNMTDataset(torch.utils.data.IterableDataset):
     """ Samples from given datasets using temperature sampling. """
 
     def __init__(self, datasets, langs, T=1.0, bilingual=False):
@@ -185,7 +185,7 @@ class MNMTDataModule(pl.LightningDataModule):
                 raise NotImplementedError
         tokenizer = MBart50TokenizerFast.from_pretrained('facebook/mbart-large-50')
 
-    def setup(self, stage = None):
+    def setup(self, stage=None):
         self.tokenizer = MBart50TokenizerFast.from_pretrained('facebook/mbart-large-50')
         self.splits = {'train':{}, 'validation':{}, 'test':{}}
         self.train_examples = []
@@ -200,14 +200,14 @@ class MNMTDataModule(pl.LightningDataModule):
             else:
                 raise NotImplementedError
             
-            for split in ['train']:
+            splits = ['train'] if stage == 'fit' else ['validation', 'test']
+            for split in splits:
                 shuffle = False if split == 'test' else True
                 dataset_split, num_examples = dataset.load_split(split, shuffle=shuffle)
                 self.splits[split][lang_pair] = dataset_split
                 if split=='train': self.train_examples.append(num_examples)
 
     def train_dataloader(self):
-        bidirectional = True if len(self.langs) > 2 else False
-        iterable = IterableDataset(self.splits['train'], self.langs, T=self.T, bilingual=len(self.langs)==2)
+        iterable = MNMTDataset(self.splits['train'], self.langs, T=self.T, bilingual=len(self.langs)==2)
         return torch.utils.data.DataLoader(iterable, batch_size=self.batch_size)
 
