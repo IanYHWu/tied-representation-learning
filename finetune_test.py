@@ -48,7 +48,8 @@ def main(params):
 
     test_results = {}
     for direction, loader in test_dataloaders.items():
-        alt_direction = '-'.join(reversed(direction.split('-')))
+        l0, l1 = direction.split('-')[0], direction.split('-')[1]
+        alt_direction = l1+'-'+l0
         bleu1, bleu2 = BLEU(), BLEU()
         bleu1.set_excluded_indices([0, 2])
         bleu2.set_excluded_indices([0, 2])
@@ -56,7 +57,8 @@ def main(params):
         y_code = tokenizer.lang_code_to_id[LANG_CODES[direction.split('-')[-1]]]
 
         start_ = time.time()
-        for i, (x, y) in enumerate(loader):
+        for i, data in enumerate(loader):
+            x, y = data['input_ids_'+l0], data['input_ids_'+l1]
             if params.test_batches is not None:
                 if i > params.test_batches:
                     break

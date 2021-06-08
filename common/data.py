@@ -92,7 +92,7 @@ class TedMulti:
         dataloader = torch.utils.data.DataLoader(dataset,
             batch_size=5)
 
-        return dataset, len(dataset)
+        return dataloader, len(dataset)
 
 
 class WMT:
@@ -104,12 +104,15 @@ class WMT:
         self.batch_size = batch_size
         self.max_len = max_len
         self.tokenizer = tokenizer
-        self.dataset = load_dataset(name, self.langs[0] + '-' + self.langs[1])
+        try:
+            self.dataset = load_dataset(name, self.langs[0] + '-' + self.langs[1])
+        except ValueError:
+            self.dataset = load_dataset(name, self.langs[1] + '-' + self.langs[0])
 
     def load_split(self, split, shuffle=False):
         dataset = self.dataset[split]
 
-        def tokenize_fn(examples):
+        def tokenize_fn(example):
             """apply tokenization"""
             l_tok = []
             for lang in self.langs:
@@ -220,5 +223,5 @@ class MNMTDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         iterable = MNMTDataset(self.splits['train'], self.langs, T=self.T, bilingual=len(self.langs)==2)
-        return torch.utils.data.DataLoader(iterable)
+        return torch.utils.data.DataLoader(iterable, batch_size=None)
 
