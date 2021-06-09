@@ -106,7 +106,7 @@ class TedMulti:
         dataloader = torch.utils.data.DataLoader(dataset,
             batch_size=5)
 
-        return dataset, len(dataset)
+        return dataloader, len(dataset)
 
 
 class WMT:
@@ -118,13 +118,18 @@ class WMT:
         self.batch_size = batch_size
         self.max_len = max_len
         self.tokenizer = tokenizer
-        self.dataset = load_our_dataset(name=name, lang_pair=self.langs[0] + '-' + self.langs[1],
-            local_path=local_path)
+
+        try:
+            self.dataset = load_our_dataset(name=name, lang_pair=self.langs[0] + '-' + self.langs[1],
+                local_path=local_path)
+        except ValueError:
+            self.dataset = load_our_dataset(name=name, lang_pair=self.langs[1] + '-' + self.langs[0],
+                local_path=local_path)
 
     def load_split(self, split, shuffle=False):
         dataset = self.dataset[split]
 
-        def tokenize_fn(examples):
+        def tokenize_fn(example):
             """apply tokenization"""
             l_tok = []
             for lang in self.langs:
@@ -217,12 +222,13 @@ class MNMTDataModule(pl.LightningDataModule):
         for l1, l2 in combinations(sorted(self.langs), 2):
             if (l1+'-'+l2 not in self.excluded) and (l2+'-'+l1 not in self.excluded):
                 lang_pair = l1 + '-' + l2 
+                lang_sorted = sorted([l1,l2])[0]+'-'+sorted([l1,l2])[1]
                 
                 if BITEXT_DATASETS[lang_pair] == 'ted_multi':
                     dataset = TedMulti([l1, l2], self.batch_size, self.max_len, self.tokenizer)
                 elif BITEXT_DATASETS[lang_pair][:3] == 'wmt':
-                    dataset = WMT([l1, l2], self.batch_size, self.max_len, self.tokenizer, name=BITEXT_DATASETS[lang_pair],
-                        local_path=self.local_path)
+                    dataset = WMT([l1, l2], self.batch_size, self.max_len, self.tokenizer,
+                        name=BITEXT_DATASETS[lang_sorted], local_path=self.local_path)
                 else:
                     raise NotImplementedError
                 
@@ -235,5 +241,5 @@ class MNMTDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         iterable = MNMTDataset(self.splits['train'], self.langs, T=self.T, bilingual=len(self.langs)==2)
-        return torch.utils.data.DataLoader(iterable)
+        return torch.utils.data.DataLoader(iterable, batch_size=None)
 
