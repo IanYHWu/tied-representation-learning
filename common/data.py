@@ -63,8 +63,12 @@ for k,v in list(BITEXT_DATASETS.items()):
     BITEXT_DATASETS[k.split('-')[1]+'-'+k.split('-')[0]] = v
 
 
-def load_our_dataset(lang_pair=None, name=None, local_path='.'):
-    name = BITEXT_DATASETS[lang_pair] == 'ted_multi' if name is None else name
+def load_our_dataset(lang_pair=None, name=None, local_path='.', test=False):
+    if test:
+        name = 'ted_multi'
+    else:
+        if name is None:
+            name = BITEXT_DATASETS[lang_pair]
     if name == 'ted_multi':
         dataset = load_dataset('ted_multi')
     elif name[:3] == 'wmt':
@@ -81,13 +85,13 @@ def load_our_dataset(lang_pair=None, name=None, local_path='.'):
 class TedMulti:
     """ Ted Multilingual Dataset."""
 
-    def __init__(self, langs, batch_size, max_len, tokenizer):
+    def __init__(self, langs, batch_size, max_len, tokenizer, test=False):
         self.langs = langs 
         self.cols = ['input_ids_' + l for l in langs]
         self.batch_size = batch_size
         self.max_len = max_len
         self.tokenizer = tokenizer
-        self.dataset = load_our_dataset(name='ted_multi')
+        self.dataset = load_our_dataset(name='ted_multi', test=test)
  
     def load_split(self, split, shuffle=False):
         dataset = self.dataset[split]
@@ -116,7 +120,7 @@ class WMT:
     """ WMT dataset for given year. """
 
     def __init__(self, langs, batch_size, max_len, tokenizer,
-        name='wmt14', local_path='.'):
+        name='wmt14', local_path='.', test=False):
         self.langs = sorted(langs)
         self.cols = ['input_ids_' + l for l in langs]
         self.batch_size = batch_size
@@ -125,10 +129,10 @@ class WMT:
 
         try:
             self.dataset = load_our_dataset(name=name, lang_pair=self.langs[0] + '-' + self.langs[1],
-                local_path=local_path)
+                local_path=local_path, test=test)
         except ValueError:
             self.dataset = load_our_dataset(name=name, lang_pair=self.langs[1] + '-' + self.langs[0],
-                local_path=local_path)
+                local_path=local_path, test=test)
 
     def load_split(self, split, shuffle=False):
         dataset = self.dataset[split]
@@ -203,7 +207,8 @@ class MNMTDataset(torch.utils.data.IterableDataset):
 class MNMTDataModule(pl.LightningDataModule):
     """Training data class for pytorch lightning. """
 
-    def __init__(self, langs, batch_size, max_len, T=1.0, excluded=[], local_path=None):
+    def __init__(self, langs, batch_size, max_len, T=1.0,
+        excluded=[], local_path=None, test=False):
         super().__init__()
         self.langs = langs
         self.batch_size = batch_size
@@ -215,7 +220,7 @@ class MNMTDataModule(pl.LightningDataModule):
     def preprare_data(self):
         for l1, l2 in combinations(self.langs, 2):
             if (l1+'-'+l2 not in self.excluded) and (l2+'-'+l1 not in self.excluded):
-                load_our_dataset(lang_pair=l1 + '-' + l2, local_path=self.local_path)
+                load_our_dataset(lang_pair=l1 + '-' + l2, local_path=self.local_path, test=self.test)
         tokenizer = MBart50TokenizerFast.from_pretrained('facebook/mbart-large-50')
 
     def setup(self, stage=None):
@@ -228,10 +233,10 @@ class MNMTDataModule(pl.LightningDataModule):
                 lang_pair = l1 + '-' + l2 
                 
                 if BITEXT_DATASETS[lang_pair] == 'ted_multi':
-                    dataset = TedMulti([l1, l2], self.batch_size, self.max_len, self.tokenizer)
+                    dataset = TedMulti([l1, l2], self.batch_size, self.max_len, self.tokenizer, test=self.test)
                 elif BITEXT_DATASETS[lang_pair][:3] == 'wmt':
                     dataset = WMT([l1, l2], self.batch_size, self.max_len, self.tokenizer,
-                        name=BITEXT_DATASETS[lang_pair], local_path=self.local_path)
+                        name=BITEXT_DATASETS[lang_pair], local_path=self.local_path, test=self.test)
                 else:
                     raise NotImplementedError
                 

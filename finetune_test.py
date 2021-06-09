@@ -19,7 +19,7 @@ def main(params):
 
     # get data
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    datamodule = MNMTDataModule(params.langs, params.batch_size, params.max_len, T=params.temp)
+    datamodule = MNMTDataModule(params.langs, params.batch_size, params.max_len, T=params.temp, test=True)
     datamodule.prepare_data()
     datamodule.setup(stage='test')
     test_dataloaders = datamodule.splits['validation'] if params.split == 'val' else datamodule.splits['test']
