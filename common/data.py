@@ -58,6 +58,7 @@ BITEXT_DATASETS = { # dataset used for each language pair
     'en-fr' : 'wmt14',
     'de-en' : 'wmt19',
     'az-fr' : 'ted_multi',
+    'fr-de' : 'ted_multi',
 }
 for k,v in list(BITEXT_DATASETS.items()):
     BITEXT_DATASETS[k.split('-')[1]+'-'+k.split('-')[0]] = v
@@ -216,6 +217,7 @@ class MNMTDataModule(pl.LightningDataModule):
         self.T = T
         self.excluded = excluded
         self.local_path = local_path
+        self.test = test
 
     def preprare_data(self):
         for l1, l2 in combinations(self.langs, 2):
@@ -232,7 +234,7 @@ class MNMTDataModule(pl.LightningDataModule):
             if (l1+'-'+l2 not in self.excluded) and (l2+'-'+l1 not in self.excluded):
                 lang_pair = l1 + '-' + l2 
                 
-                if BITEXT_DATASETS[lang_pair] == 'ted_multi':
+                if self.test or (BITEXT_DATASETS[lang_pair] == 'ted_multi'):
                     dataset = TedMulti([l1, l2], self.batch_size, self.max_len, self.tokenizer, test=self.test)
                 elif BITEXT_DATASETS[lang_pair][:3] == 'wmt':
                     dataset = WMT([l1, l2], self.batch_size, self.max_len, self.tokenizer,
