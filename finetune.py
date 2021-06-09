@@ -27,10 +27,12 @@ def main(params):
     logger = logging.TrainLogger(params)
     logger.make_dirs()
     logger.save_params()
+    params.excluded = [params.zero_shot[i]+'-'+params.zero_shot[i+1] for i in range(0,len(params.zero_shot),2)]
 
     # get data
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    datamodule = MNMTDataModule(params.langs, params.batch_size, params.max_len, T=params.temp)
+    datamodule = MNMTDataModule(params.langs, params.batch_size, params.max_len,
+        T=params.temp, excluded=params.excluded, local_path=params.local_path)
     datamodule.prepare_data()
     datamodule.setup(stage='fit')
 

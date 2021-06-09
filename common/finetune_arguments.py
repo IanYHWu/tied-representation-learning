@@ -29,6 +29,10 @@ parser.add_argument('--seed',
     default=11, type=int,
     help='Random seed for run.'
 )
+parser.add_argument('--local_path',
+    default='.', type=str,
+    help='Path to datasets saved locally.'
+)
 
 #### Languages + preprocessing
 parser.add_argument('--langs',

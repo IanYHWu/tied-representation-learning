@@ -57,7 +57,10 @@ BITEXT_DATASETS = { # dataset used for each language pair
     'cs-en' : 'wmt14',
     'en-fr' : 'wmt14',
     'de-en' : 'wmt19',
+    'az-fr' : 'ted_multi',
 }
+for k,v in list(BITEXT_DATASETS.items()):
+    BITEXT_DATASETS[k.split('-')[1]+'-'+k.split('-')[0]] = v
 
 
 def load_our_dataset(lang_pair=None, name=None, local_path='.'):
@@ -112,7 +115,8 @@ class TedMulti:
 class WMT:
     """ WMT dataset for given year. """
 
-    def __init__(self, langs, batch_size, max_len, tokenizer, name='wmt14'):
+    def __init__(self, langs, batch_size, max_len, tokenizer,
+        name='wmt14', local_path='.'):
         self.langs = sorted(langs)
         self.cols = ['input_ids_' + l for l in langs]
         self.batch_size = batch_size
@@ -163,7 +167,7 @@ class MNMTDataset(torch.utils.data.IterableDataset):
 
         if not self.bilingual:
             lang_pairs = list(datasets.keys())
-            self.lang_pairs = [x.split('-')[0], x.split('-')[1] for x in lang_pairs]
+            self.lang_pairs = [(x.split('-')[0], x.split('-')[1]) for x in lang_pairs]
             lengths = np.array([len(datasets[l1+'-'+l2]) for l1, l2 in self.lang_pairs])
             self.prob_dist = (lengths ** T) / (lengths ** T).sum()
 
@@ -209,7 +213,7 @@ class MNMTDataModule(pl.LightningDataModule):
         self.local_path = local_path
 
     def preprare_data(self):
-        for l1, l2 in combinations(sorted(self.langs), 2):
+        for l1, l2 in combinations(self.langs, 2):
             if (l1+'-'+l2 not in self.excluded) and (l2+'-'+l1 not in self.excluded):
                 load_our_dataset(lang_pair=l1 + '-' + l2, local_path=self.local_path)
         tokenizer = MBart50TokenizerFast.from_pretrained('facebook/mbart-large-50')
@@ -219,16 +223,15 @@ class MNMTDataModule(pl.LightningDataModule):
         self.splits = {'train':{}, 'validation':{}, 'test':{}}
         self.train_examples = []
         
-        for l1, l2 in combinations(sorted(self.langs), 2):
+        for l1, l2 in combinations(self.langs, 2):
             if (l1+'-'+l2 not in self.excluded) and (l2+'-'+l1 not in self.excluded):
                 lang_pair = l1 + '-' + l2 
-                lang_sorted = sorted([l1,l2])[0]+'-'+sorted([l1,l2])[1]
                 
                 if BITEXT_DATASETS[lang_pair] == 'ted_multi':
                     dataset = TedMulti([l1, l2], self.batch_size, self.max_len, self.tokenizer)
                 elif BITEXT_DATASETS[lang_pair][:3] == 'wmt':
                     dataset = WMT([l1, l2], self.batch_size, self.max_len, self.tokenizer,
-                        name=BITEXT_DATASETS[lang_sorted], local_path=self.local_path)
+                        name=BITEXT_DATASETS[lang_pair], local_path=self.local_path)
                 else:
                     raise NotImplementedError
                 
